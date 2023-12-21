@@ -56,7 +56,7 @@ namespace NewOS
                     break;
                 case "shutdown":
                     ClearConsole();
-                    System.Threading.Thread.Sleep(200);
+                    System.Threading.Thread.Sleep(300);
                     Cosmos.System.Power.Shutdown();
                     break;
                 case "reboot":
