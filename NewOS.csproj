@@ -13,26 +13,43 @@
         <StartCosmosGDB>False</StartCosmosGDB>
         <VisualStudioDebugPort>Pipe: Cosmos\Serial</VisualStudioDebugPort>
         <CosmosDebugPort>Serial: COM1</CosmosDebugPort>
-        <Launch>VMware</Launch>
+        <Launch>ISO</Launch>
         <Profile>VMware</Profile>
-        <Description>Use VMware Player or Workstation to deploy and debug.</Description>
+        <Description></Description>
         <PxeInterface>192.168.0.8</PxeInterface>
         <DebugEnabled>False</DebugEnabled>
         <VMWareEdition>Workstation</VMWareEdition>
-        <CompressionType>None</CompressionType>
-        <RemoveBootDebugOutput>False</RemoveBootDebugOutput>
+        <CompressionType>Gzip</CompressionType>
+        <RemoveBootDebugOutput>True</RemoveBootDebugOutput>
         <OptimizationLevel>2</OptimizationLevel>
         <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+        <AnalysisLevel>6.0-recommended</AnalysisLevel>
+        <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+        <NeutralLanguage>en</NeutralLanguage>
+        <Copyright>NewOC 2019-2023</Copyright>
+        <SignAssembly>False</SignAssembly>
+        <DelaySign>True</DelaySign>
+        <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
       <Optimize>False</Optimize>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'" />
+
     <ItemGroup>
         <PackageReference Include="Cosmos.Build" Version="0-*" NoWarn="NU1604" />
         <PackageReference Include="Cosmos.Debug.Kernel" Version="0-*" NoWarn="NU1604" />
         <PackageReference Include="Cosmos.System2" Version="0-*" NoWarn="NU1604" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="LICENSE">
+        <Pack>True</Pack>
+        <PackagePath>\</PackagePath>
+      </None>
     </ItemGroup>
 
 </Project>

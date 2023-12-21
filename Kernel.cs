@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.VisualBasic.FileIO;
+using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
 using System.IO;
@@ -52,6 +53,14 @@ namespace NewOS
                     Console.WriteLine("fs - File system type");
                     Console.WriteLine("space - Get aviliable space");
                     Console.WriteLine("datetime - Current date and time");
+                    Console.WriteLine("write - Write text to file");
+                    Console.WriteLine("read - Read file content");
+                    Console.WriteLine("readbytes - Read file bytes");
+                    Console.WriteLine("makefile - Create file");
+                    Console.WriteLine("mkdir - Make directory");
+                    Console.WriteLine("del - Delete file");
+                    Console.WriteLine("deldir - Delete directory");
+                    Console.WriteLine("clear - Clear console");
                     Console.WriteLine("========================================");
                     break;
                 case "shutdown":
