@@ -33,6 +33,7 @@ namespace NewOS
         {
             string filename = "";
             string dirname = "";
+            string text = "";
 
             var input = Console.ReadLine();
             switch (input)
@@ -54,6 +55,8 @@ namespace NewOS
                     Console.WriteLine("========================================");
                     break;
                 case "shutdown":
+                    ClearConsole();
+                    System.Threading.Thread.Sleep(200);
                     Cosmos.System.Power.Shutdown();
                     break;
                 case "reboot":
@@ -87,7 +90,7 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     break;
                 case "deldir":
                     dirname = Console.ReadLine();
-                    Sys.FileSystem.VFS.VFSManager.DeleteFile(currentDirectory + dirname);
+                    Sys.FileSystem.VFS.VFSManager.DeleteDirectory(currentDirectory + dirname, true);
                     break;
                 case "ls":
                     try
@@ -139,6 +142,41 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                 case "datetime":
                     Console.WriteLine(DateTime.Now);
                     break;
+                case "read":
+                    filename = Console.ReadLine();
+                    try
+                    {
+                        Console.WriteLine(File.ReadAllText(@"0:\" + filename));
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.ToString());
+                    }
+                    break;
+                case "readbytes":
+                    filename = Console.ReadLine();
+                    try
+                    {
+                        Console.WriteLine(File.ReadAllBytes(@"0:\" + filename));
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.ToString());
+                    }
+                    break;
+                case "write":
+                    filename = Console.ReadLine();
+                    text = Console.ReadLine();
+                    try
+                    {
+                        File.AppendAllText(@"0:\" + filename, Environment.NewLine + text);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.ToString());
+                    }
+                    break;
+
             }
         }
 
