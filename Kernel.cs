@@ -61,6 +61,7 @@ namespace NewOS
                     Console.WriteLine("del - Delete file");
                     Console.WriteLine("deldir - Delete directory");
                     Console.WriteLine("clear - Clear console");
+                    Console.WriteLine("sysinfo - System information");
                     Console.WriteLine("========================================");
                     break;
                 case "shutdown":
