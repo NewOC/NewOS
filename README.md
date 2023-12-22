@@ -9,12 +9,16 @@
 Console version
  - [ ] Kernel
 	 - [ ] Commands
-		 - [ ] Interact with Internet (processing)
+		 - [ ] Interact with Internet
+		 - [ ] User settings
 		 - [x] Interact with file system
 		 - [x] Interact with files
 		 - [ ] Interact with disks
 		 - [x] System information
-
+		 - [ ] Setup OS on disk
+		 - [ ] Auto fix problems with OS
+		 - [ ] Send found bugs to GitHub
+		 - [ ] Package manager
 		 
 **<span style="color:red">!GUI UNDER CONSTRUCTION!</span>**
 
