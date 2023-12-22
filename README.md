@@ -9,6 +9,7 @@
 Console version
  - [ ] Kernel
 	 - [ ] Commands
+		 - [ ] Interact with Internet (processing)
 		 - [x] Interact with file system
 		 - [x] Interact with files
 		 - [ ] Interact with disks
