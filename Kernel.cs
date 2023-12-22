@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
 using System.IO;
+using System.Net.NetworkInformation;
 using System.Reflection.PortableExecutable;
 using System.Text;
 using Sys = Cosmos.System;
@@ -143,7 +144,7 @@ namespace NewOS
                     break;
                 case "shutdown":
                     ClearConsole();
-                    System.Threading.Thread.Sleep(300);
+                    System.Threading.Thread.Sleep(500);
                     Cosmos.System.Power.Shutdown();
                     break;
                 case "reboot":
@@ -164,20 +165,40 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     ClearConsole();
                     break;
                 case "makefile":
+                    Console.WriteLine("====Type file name====");
                     filename = Console.ReadLine();
+                    Console.WriteLine("======================");
+                    Console.WriteLine("The file is being created. Please be patient");
+                    Console.WriteLine("=========");
+                    Console.WriteLine("Completed");
                     fs.CreateFile(currentDirectory + filename);
                     break;
                 case "mkdir":
+                    Console.WriteLine("====Type folder name====");
                     dirname = Console.ReadLine();
+                    Console.WriteLine("========================");
+                    Console.WriteLine("The folder is being created. Please be patient");
+                    Console.WriteLine("=========");
+                    Console.WriteLine("Completed");
                     fs.CreateDirectory(currentDirectory + dirname);
                     break;
                 case "del":
+                    Console.WriteLine("====Type file name====");
                     filename = Console.ReadLine();
+                    Console.WriteLine("======================");
+                    Console.WriteLine("The file is being deleted. Please be patient");
                     Sys.FileSystem.VFS.VFSManager.DeleteFile(currentDirectory + filename);
+                    Console.WriteLine("=========");
+                    Console.WriteLine("Completed");
                     break;
                 case "deldir":
+                    Console.WriteLine("====Type folder name====");
                     dirname = Console.ReadLine();
+                    Console.WriteLine("========================");
+                    Console.WriteLine("The folder is being deleted. Please be patient");
                     Sys.FileSystem.VFS.VFSManager.DeleteDirectory(currentDirectory + dirname, true);
+                    Console.WriteLine("=========");
+                    Console.WriteLine("Completed");
                     break;
                 case "ls":
                     try
@@ -216,6 +237,8 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     }
                     break;
                 case "cd":
+                    Console.WriteLine("====Write folder name====");
+                    Console.WriteLine("Ex. 0:\\YourFolderName");
                     currentDirectory = Console.ReadLine();
                     break;
                 case "space":
@@ -230,10 +253,14 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     Console.WriteLine(DateTime.Now);
                     break;
                 case "read":
+                    Console.WriteLine("====Write your file name====");
                     filename = Console.ReadLine();
                     try
                     {
+                        Console.WriteLine("============================");
                         Console.WriteLine(File.ReadAllText(@"0:\" + filename));
+                        Console.WriteLine("=========");
+                        Console.WriteLine("Completed");
                     }
                     catch (Exception e)
                     {
@@ -241,10 +268,14 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     }
                     break;
                 case "readbytes":
+                    Console.WriteLine("====Write your file name====");
                     filename = Console.ReadLine();
                     try
                     {
+                        Console.WriteLine("============================");
                         Console.WriteLine(File.ReadAllBytes(@"0:\" + filename));
+                        Console.WriteLine("=========");
+                        Console.WriteLine("Completed");
                     }
                     catch (Exception e)
                     {
@@ -252,11 +283,16 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     }
                     break;
                 case "write":
+                    Console.WriteLine("======Write your file name======");
                     filename = Console.ReadLine();
+                    Console.WriteLine("====Write your text to write====");
                     text = Console.ReadLine();
+                    Console.WriteLine("Data is being written to the file.Please be patient");
                     try
                     {
                         File.AppendAllText(@"0:\" + filename, Environment.NewLine + text);
+                        Console.WriteLine("=========");
+                        Console.WriteLine("Completed");
                     }
                     catch (Exception e)
                     {
@@ -264,7 +300,9 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                     }
                     break;
                 case "dellastl":
+                    Console.WriteLine("====Write your file name====");
                     filename = Console.ReadLine();
+                    Console.WriteLine("Removing the last line from a file. Please be patient");
                     try
                     {
                         string[] lines = File.ReadAllLines(@"0:\" + filename);
@@ -274,6 +312,8 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                             Array.Resize(ref lines, lines.Length - 1);
 
                             File.WriteAllLines(@"0:\" + filename, lines);
+                            Console.WriteLine("=========");
+                            Console.WriteLine("Completed");
                         }
                         else
                         {
