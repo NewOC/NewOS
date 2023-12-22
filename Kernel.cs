@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualBasic.FileIO;
+﻿using Cosmos.Core.Memory;
+using Microsoft.VisualBasic.FileIO;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
@@ -140,6 +141,7 @@ namespace NewOS
                     Console.WriteLine("clear - Clear console");
                     Console.WriteLine("sysinfo - System information");
                     Console.WriteLine("delastl - Delete last writed line");
+                    Console.WriteLine("clearram - Perform RAM cleanup");
                     Console.WriteLine("========================================");
                     break;
                 case "shutdown":
@@ -325,16 +327,26 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                         Console.WriteLine(e.ToString());
                     }
                     break;
+                case "clearram":
+                    Clearram();
+                    break;
             }
         }
 
         public void ClearConsole()
         {
             Console.Clear();
+            Clearram();
             Console.BackgroundColor = ConsoleColor.Blue;
             Console.WriteLine("NewOS                                                  " + DateTime.Now);
             Console.ForegroundColor = ConsoleColor.White;
             Console.BackgroundColor = ConsoleColor.Black;
+        }
+        private void Clearram()
+        {
+            Console.WriteLine("Performing RAM cleanup...");
+            int freedObjectsCount = Heap.Collect();
+            Console.WriteLine($"Freed {freedObjectsCount} objects from RAM.");
         }
     }
 }
