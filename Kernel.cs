@@ -11,6 +11,9 @@ namespace NewOS
 {
     public class Kernel: Sys.Kernel
     {
+        private List<string> commandHistory = new List<string>();
+        private int historyIndex = 0;
+
         Sys.FileSystem.CosmosVFS fs;
         string currentDirectory = @"0:\";
         protected override void BeforeRun()
@@ -27,16 +30,89 @@ namespace NewOS
         protected override void Run()
         {
             Console.ForegroundColor = ConsoleColor.White;
-            Console.Write("OS >> ");
-            Commands();
+            Console.Write("NewOS >> ");
+            var input = ReadCommandWithHistory();
+            commandHistory.Add(input);
+            Commands(input);
         }
-        public void Commands()
+
+
+        private string ReadCommandWithHistory()
         {
+            ConsoleKeyInfo key;
+            StringBuilder currentInput = new StringBuilder();
+
+            do
+            {
+                key = Console.ReadKey(true);
+
+                if (key.Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine();
+                    break;
+                }
+                else if (key.Key == ConsoleKey.Backspace && currentInput.Length > 0)
+                {
+                    int cursorLeft = Console.CursorLeft;
+
+                    currentInput.Remove(currentInput.Length - 1, 1);
+
+                    Console.SetCursorPosition(cursorLeft - 1, Console.CursorTop);
+                    Console.Write(" ");
+                    Console.SetCursorPosition(cursorLeft - 1, Console.CursorTop);
+                }
+                else if (key.Key == ConsoleKey.UpArrow)
+                {
+                    if (historyIndex < commandHistory.Count - 1)
+                    {
+                        historyIndex++;
+                        ClearCurrentConsoleLine();
+                        Console.Write("NewOS >> " + commandHistory[historyIndex]);
+                        currentInput = new StringBuilder(commandHistory[historyIndex]);
+                    }
+                }
+                else if (key.Key == ConsoleKey.DownArrow)
+                {
+                    if (historyIndex > 0)
+                    {
+                        historyIndex--;
+                        ClearCurrentConsoleLine();
+                        Console.Write("NewOS >> " + commandHistory[historyIndex]);
+                        currentInput = new StringBuilder(commandHistory[historyIndex]);
+                    }
+                    else
+                    {
+                        ClearCurrentConsoleLine();
+                        currentInput.Clear();
+                    }
+                }
+                else
+                {
+                    currentInput.Append(key.KeyChar);
+                    Console.Write(key.KeyChar);
+                }
+            } while (key.Key != ConsoleKey.Enter);
+
+            return currentInput.ToString();
+        }
+
+        private void ClearCurrentConsoleLine()
+        {
+            int currentLineCursor = Console.CursorTop;
+            Console.SetCursorPosition(0, Console.CursorTop);
+            Console.Write(new string(' ', Console.WindowWidth));
+            Console.SetCursorPosition(0, currentLineCursor);
+        }
+
+
+
+        public void Commands(string input)
+        {
+
             string filename = "";
             string dirname = "";
             string text = "";
 
-            var input = Console.ReadLine();
             switch (input)
             {
                 default:
@@ -62,6 +138,7 @@ namespace NewOS
                     Console.WriteLine("deldir - Delete directory");
                     Console.WriteLine("clear - Clear console");
                     Console.WriteLine("sysinfo - System information");
+                    Console.WriteLine("delastl - Delete last writed line");
                     Console.WriteLine("========================================");
                     break;
                 case "shutdown":
@@ -186,7 +263,28 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                         Console.WriteLine(e.ToString());
                     }
                     break;
+                case "dellastl":
+                    filename = Console.ReadLine();
+                    try
+                    {
+                        string[] lines = File.ReadAllLines(@"0:\" + filename);
 
+                        if (lines.Length > 0)
+                        {
+                            Array.Resize(ref lines, lines.Length - 1);
+
+                            File.WriteAllLines(@"0:\" + filename, lines);
+                        }
+                        else
+                        {
+                            Console.WriteLine("File is empty. Nothing to delete");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.ToString());
+                    }
+                    break;
             }
         }
 

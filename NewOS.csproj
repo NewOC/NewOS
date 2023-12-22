@@ -13,14 +13,14 @@
         <StartCosmosGDB>False</StartCosmosGDB>
         <VisualStudioDebugPort>Pipe: Cosmos\Serial</VisualStudioDebugPort>
         <CosmosDebugPort>Serial: COM1</CosmosDebugPort>
-        <Launch>ISO</Launch>
+        <Launch>VMware</Launch>
         <Profile>VMware</Profile>
         <Description></Description>
         <PxeInterface>192.168.0.8</PxeInterface>
         <DebugEnabled>False</DebugEnabled>
         <VMWareEdition>Workstation</VMWareEdition>
-        <CompressionType>Gzip</CompressionType>
-        <RemoveBootDebugOutput>True</RemoveBootDebugOutput>
+        <CompressionType>None</CompressionType>
+        <RemoveBootDebugOutput>False</RemoveBootDebugOutput>
         <OptimizationLevel>2</OptimizationLevel>
         <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
         <AnalysisLevel>6.0-recommended</AnalysisLevel>
@@ -31,6 +31,7 @@
         <SignAssembly>False</SignAssembly>
         <DelaySign>True</DelaySign>
         <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
+        <BinFormat>Elf</BinFormat>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
