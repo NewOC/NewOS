@@ -1,11 +1,16 @@
-﻿using Cosmos.Core.Memory;
+﻿    using Cosmos.Core.Memory;
+using Cosmos.HAL;
+using Cosmos.System.Network.Config;
+using Cosmos.System.Network.IPv4;
 using Microsoft.VisualBasic.FileIO;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
 using System.IO;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
 using System.Text;
 using Sys = Cosmos.System;
 
@@ -18,24 +23,26 @@ namespace NewOS
 
         Sys.FileSystem.CosmosVFS fs;
         string currentDirectory = @"0:\";
+
         protected override void BeforeRun()
         {
-            fs = new Sys.FileSystem.CosmosVFS();
-            Sys.FileSystem.VFS.VFSManager.RegisterVFS(fs);
-            ClearConsole();
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("Welcome to NewOS!");
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("0.1 Alpha Console");
+                fs = new Sys.FileSystem.CosmosVFS();
+                Sys.FileSystem.VFS.VFSManager.RegisterVFS(fs);
+                ClearConsole();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine("Welcome to NewOS!");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("0.1 Alpha Console");
+                base.BeforeRun();
         }
         
         protected override void Run()
         {
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write("NewOS >> ");
-            var input = ReadCommandWithHistory();
-            commandHistory.Add(input);
-            Commands(input);
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write("NewOS >> ");
+                var input = ReadCommandWithHistory();
+                commandHistory.Add(input);
+                Commands(input);
         }
 
 
@@ -107,6 +114,44 @@ namespace NewOS
         }
 
 
+        public static class CalendarCommand
+        {
+            public static void Execute()
+            {
+                DateTime currentDate = DateTime.Now;
+
+                int year = currentDate.Year;
+                int month = currentDate.Month;
+                int dayOfMonth = currentDate.Day;
+
+                Console.WriteLine($"{dayOfMonth:D2}.{month:D2}.{year}");
+
+                Console.WriteLine("M T W T F S S");
+
+                // Знаходимо перший день місяця
+                DateTime firstDayOfMonth = new DateTime(year, month, 1);
+                int daysInMonth = DateTime.DaysInMonth(year, month);
+                int startDay = (int)firstDayOfMonth.DayOfWeek;
+
+                for (int i = 0; i < startDay; i++)
+                {
+                    Console.Write(" ");
+                }
+
+                // Виводимо числа місяця
+                for (int i = 1; i <= daysInMonth; i++)
+                {
+                    Console.Write($"{i:D2} ");
+
+                    if ((i + startDay) % 7 == 0 || i == daysInMonth)
+                    {
+                        Console.WriteLine();
+                    }
+                }
+            }
+        }
+
+
 
         public void Commands(string input)
         {
@@ -114,6 +159,7 @@ namespace NewOS
             string filename = "";
             string dirname = "";
             string text = "";
+            string newpath = "";
 
             switch (input)
             {
@@ -330,13 +376,16 @@ Used RAM: {3}", CPUBrand, CPUVendor, AllRAM, UsedRAM);
                 case "clearram":
                     Clearram();
                     break;
+                case "calendar":
+                    CalendarCommand.Execute();
+                    break;
             }
         }
 
         public void ClearConsole()
         {
-            Console.Clear();
             Clearram();
+            Console.Clear();
             Console.BackgroundColor = ConsoleColor.Blue;
             Console.WriteLine("NewOS                                                  " + DateTime.Now);
             Console.ForegroundColor = ConsoleColor.White;
