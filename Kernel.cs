@@ -128,7 +128,6 @@ namespace NewOS
 
                 Console.WriteLine("M T W T F S S");
 
-                // Знаходимо перший день місяця
                 DateTime firstDayOfMonth = new DateTime(year, month, 1);
                 int daysInMonth = DateTime.DaysInMonth(year, month);
                 int startDay = (int)firstDayOfMonth.DayOfWeek;
@@ -138,7 +137,6 @@ namespace NewOS
                     Console.Write(" ");
                 }
 
-                // Виводимо числа місяця
                 for (int i = 1; i <= daysInMonth; i++)
                 {
                     Console.Write($"{i:D2} ");
