@@ -3,6 +3,8 @@
 =
 **<span style="color:red">!WARNING! CONSOLE VERSION. GUI UNDER CONSTRUCTION</span>**
 
+Rebuilding os on C++ and Assembler
+
 
 # TODO
 
@@ -11,10 +13,10 @@ Console version
 	 - [ ] Commands
 		 - [ ] Interact with Internet
 		 - [ ] User settings
-		 - [x] Interact with file system
-		 - [x] Interact with files
+		 - [ ] Interact with file system
+		 - [ ] Interact with files
 		 - [ ] Interact with disks
-		 - [x] System information
+		 - [ ] System information
 		 - [ ] Setup OS on disk
 		 - [ ] Auto fix problems with OS
 		 - [ ] Send found bugs to GitHub
