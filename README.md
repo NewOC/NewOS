@@ -3,7 +3,7 @@
 =
 **<span style="color:red">!WARNING! CONSOLE VERSION. GUI UNDER CONSTRUCTION</span>**
 
-Rebuilding os on C++ and Assembler
+Rebuilding os on C Python and Assembler
 
 
 # TODO
