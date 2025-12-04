@@ -66,4 +66,3 @@ main_loop:
 %include "drivers/keyboard.asm"
 %include "shell/shell.asm"
 %include "data.asm"
-%include "lang/nova.asm"

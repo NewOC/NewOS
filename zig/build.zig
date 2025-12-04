@@ -37,7 +37,19 @@ pub fn build(b: *std.Build) void {
         .root_module = shell_mod,
     });
 
-    // Install both object files
+    // Build Nova interpreter module
+    const nova_mod = b.createModule(.{
+        .root_source_file = b.path("nova.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const nova = b.addObject(.{
+        .name = "nova",
+        .root_module = nova_mod,
+    });
+
+    // Install all object files
     const install_fs = b.addInstallArtifact(fs, .{
         .dest_dir = .{ .override = .{ .custom = "../build" } },
     });
@@ -46,6 +58,11 @@ pub fn build(b: *std.Build) void {
         .dest_dir = .{ .override = .{ .custom = "../build" } },
     });
 
+    const install_nova = b.addInstallArtifact(nova, .{
+        .dest_dir = .{ .override = .{ .custom = "../build" } },
+    });
+
     b.default_step.dependOn(&install_fs.step);
     b.default_step.dependOn(&install_shell.step);
+    b.default_step.dependOn(&install_nova.step);
 }

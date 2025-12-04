@@ -1,6 +1,9 @@
 ; Keyboard driver - PS/2 keyboard input
 ; Provides: wait_key, scancode tables
 
+; Export for Zig
+global wait_key
+
 wait_key:
     push edx
     push ebx

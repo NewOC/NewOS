@@ -10,6 +10,7 @@ extern cmd_touch
 extern cmd_rm
 extern cmd_write
 extern cmd_echo
+extern nova_start
 
 read_command:
     pusha
