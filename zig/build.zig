@@ -8,20 +8,44 @@ pub fn build(b: *std.Build) void {
         .abi = .none,
     });
 
+    const optimize = .ReleaseSmall;
+
     // Build the file system module
-    const fs = b.addObject(.{
-        .name = "fs",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("fs.zig"),
-            .target = target,
-            .optimize = .ReleaseSmall,
-        }),
+    const fs_mod = b.createModule(.{
+        .root_source_file = b.path("fs.zig"),
+        .target = target,
+        .optimize = optimize,
     });
 
-    // Output object file
-    const install = b.addInstallArtifact(fs, .{
+    const fs = b.addObject(.{
+        .name = "fs",
+        .root_module = fs_mod,
+    });
+
+    // Build shell commands module
+    const shell_mod = b.createModule(.{
+        .root_source_file = b.path("shell_cmds.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "fs", .module = fs_mod },
+        },
+    });
+
+    const shell = b.addObject(.{
+        .name = "shell_cmds",
+        .root_module = shell_mod,
+    });
+
+    // Install both object files
+    const install_fs = b.addInstallArtifact(fs, .{
         .dest_dir = .{ .override = .{ .custom = "../build" } },
     });
 
-    b.default_step.dependOn(&install.step);
+    const install_shell = b.addInstallArtifact(shell, .{
+        .dest_dir = .{ .override = .{ .custom = "../build" } },
+    });
+
+    b.default_step.dependOn(&install_fs.step);
+    b.default_step.dependOn(&install_shell.step);
 }

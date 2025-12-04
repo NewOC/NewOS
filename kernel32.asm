@@ -37,9 +37,15 @@ history_count db 0
 history_index db 0
 
 section .text
+; External Zig initialization
+extern zig_init
+
 ; Entry point
 start:
     call clear_screen
+    
+    ; Initialize Zig modules (file system)
+    call zig_init
     
     mov esi, welcome
     call print_string

@@ -1,6 +1,16 @@
 ; Shell - Command line interface
 ; Provides: read_command, execute_command, history management
 
+; External Zig functions
+extern zig_init
+extern zig_set_cursor
+extern cmd_ls
+extern cmd_cat
+extern cmd_touch
+extern cmd_rm
+extern cmd_write
+extern cmd_echo
+
 read_command:
     pusha
     
@@ -55,6 +65,11 @@ read_command:
     dec byte [cmd_pos]
     dec byte [cursor_col]
     
+    ; Clear character in buffer
+    movzx ecx, byte [cmd_pos]
+    mov byte [cmd_buffer + ecx], 0
+    
+    ; Clear on screen
     movzx ebx, byte [cursor_row]
     imul ebx, MAX_COLS
     movzx ecx, byte [cursor_col]
@@ -207,6 +222,14 @@ execute_command:
     cmp byte [cmd_len], 0
     je .done
     
+    ; Update cursor for Zig (push in reverse: y first, then x for cdecl)
+    movzx eax, byte [cursor_row]  ; y
+    push eax
+    movzx eax, byte [cursor_col]  ; x
+    push eax
+    call zig_set_cursor
+    add esp, 8
+    
     mov esi, cmd_buffer
     mov edi, cmd_help
     call strcmp
@@ -226,6 +249,36 @@ execute_command:
     mov edi, cmd_nova
     call strcmp
     je .nova
+    
+    ; ls command
+    mov esi, cmd_buffer
+    mov edi, cmd_ls_str
+    call strcmp
+    je .do_ls
+    
+    ; touch <filename>
+    mov esi, cmd_buffer
+    mov edi, cmd_touch_str
+    call strncmp
+    je .do_touch
+    
+    ; rm <filename>
+    mov esi, cmd_buffer
+    mov edi, cmd_rm_str
+    call strncmp
+    je .do_rm
+    
+    ; cat <filename>
+    mov esi, cmd_buffer
+    mov edi, cmd_cat_str
+    call strncmp
+    je .do_cat
+    
+    ; echo text or echo text > file
+    mov esi, cmd_buffer
+    mov edi, cmd_echo_str
+    call strncmp
+    je .do_echo
     
     mov esi, unknown
     call print_string
@@ -251,6 +304,58 @@ execute_command:
 
 .nova:
     call nova_start
+    jmp .done
+
+.do_ls:
+    call cmd_ls
+    jmp .done
+
+.do_touch:
+    ; Get filename (after "touch ")
+    mov esi, cmd_buffer
+    add esi, 6          ; Skip "touch "
+    movzx eax, byte [cmd_len]
+    sub eax, 6          ; Length of filename
+    push eax            ; name_len
+    push esi            ; name_ptr
+    call cmd_touch
+    add esp, 8
+    jmp .done
+
+.do_rm:
+    ; Get filename (after "rm ")
+    mov esi, cmd_buffer
+    add esi, 3          ; Skip "rm "
+    movzx eax, byte [cmd_len]
+    sub eax, 3          ; Length of filename
+    push eax            ; name_len
+    push esi            ; name_ptr
+    call cmd_rm
+    add esp, 8
+    jmp .done
+
+.do_cat:
+    ; Get filename (after "cat ")
+    mov esi, cmd_buffer
+    add esi, 4          ; Skip "cat "
+    movzx eax, byte [cmd_len]
+    sub eax, 4          ; Length of filename
+    push eax            ; name_len
+    push esi            ; name_ptr
+    call cmd_cat
+    add esp, 8
+    jmp .done
+
+.do_echo:
+    ; Get text (after "echo ")
+    mov esi, cmd_buffer
+    add esi, 5          ; Skip "echo "
+    movzx eax, byte [cmd_len]
+    sub eax, 5          ; Length of text
+    push eax            ; text_len (u16)
+    push esi            ; text_ptr
+    call cmd_echo
+    add esp, 8
     jmp .done
     
 .done:

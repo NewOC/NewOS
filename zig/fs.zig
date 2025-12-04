@@ -1,17 +1,10 @@
 // NewOS Zig Kernel Extension
 // Provides: SimpleFS (RAM-based file system)
 
-const std = @import("std");
-
-// VGA constants
-const VGA_BUFFER: [*]volatile u16 = @ptrFromInt(0xB8000);
-const VGA_WIDTH = 80;
-const VGA_HEIGHT = 25;
-
 // File system constants
-const MAX_FILES = 16;
-const MAX_FILENAME = 12;
-const MAX_FILESIZE = 1024;
+pub const MAX_FILES = 16;
+pub const MAX_FILENAME = 12;
+pub const MAX_FILESIZE = 1024;
 
 // File entry structure
 const FileEntry = struct {
@@ -25,19 +18,26 @@ const FileEntry = struct {
 var files: [MAX_FILES]FileEntry = undefined;
 var fs_initialized: bool = false;
 
+// Helper to zero memory (avoid @memset issues in freestanding)
+fn zeroMem(ptr: [*]u8, len: usize) void {
+    for (0..len) |i| {
+        ptr[i] = 0;
+    }
+}
+
 // Initialize file system
-export fn fs_init() void {
+pub export fn fs_init() void {
     for (&files) |*file| {
         file.used = false;
         file.size = 0;
-        @memset(&file.name, 0);
-        @memset(&file.data, 0);
+        zeroMem(&file.name, MAX_FILENAME);
+        zeroMem(&file.data, MAX_FILESIZE);
     }
     fs_initialized = true;
 }
 
 // Create a new file
-export fn fs_create(name_ptr: [*]const u8, name_len: u8) i32 {
+pub export fn fs_create(name_ptr: [*]const u8, name_len: u8) i32 {
     if (!fs_initialized) return -1;
     
     // Find free slot
@@ -45,7 +45,7 @@ export fn fs_create(name_ptr: [*]const u8, name_len: u8) i32 {
         if (!file.used) {
             file.used = true;
             file.size = 0;
-            @memset(&file.name, 0);
+            zeroMem(&file.name, MAX_FILENAME);
             
             const len = @min(name_len, MAX_FILENAME);
             for (0..len) |j| {
@@ -58,7 +58,7 @@ export fn fs_create(name_ptr: [*]const u8, name_len: u8) i32 {
 }
 
 // Write to file
-export fn fs_write(file_id: u8, data_ptr: [*]const u8, data_len: u16) i32 {
+pub export fn fs_write(file_id: u8, data_ptr: [*]const u8, data_len: u16) i32 {
     if (file_id >= MAX_FILES) return -1;
     if (!files[file_id].used) return -1;
     
@@ -71,7 +71,7 @@ export fn fs_write(file_id: u8, data_ptr: [*]const u8, data_len: u16) i32 {
 }
 
 // Read from file
-export fn fs_read(file_id: u8, buffer_ptr: [*]u8, max_len: u16) i32 {
+pub export fn fs_read(file_id: u8, buffer_ptr: [*]u8, max_len: u16) i32 {
     if (file_id >= MAX_FILES) return -1;
     if (!files[file_id].used) return -1;
     
@@ -83,14 +83,14 @@ export fn fs_read(file_id: u8, buffer_ptr: [*]u8, max_len: u16) i32 {
 }
 
 // Get file size
-export fn fs_size(file_id: u8) i32 {
+pub export fn fs_size(file_id: u8) i32 {
     if (file_id >= MAX_FILES) return -1;
     if (!files[file_id].used) return -1;
     return files[file_id].size;
 }
 
 // Delete file
-export fn fs_delete(file_id: u8) i32 {
+pub export fn fs_delete(file_id: u8) i32 {
     if (file_id >= MAX_FILES) return -1;
     if (!files[file_id].used) return -1;
     
@@ -100,7 +100,7 @@ export fn fs_delete(file_id: u8) i32 {
 }
 
 // Find file by name
-export fn fs_find(name_ptr: [*]const u8, name_len: u8) i32 {
+pub export fn fs_find(name_ptr: [*]const u8, name_len: u8) i32 {
     if (!fs_initialized) return -1;
     
     for (&files, 0..) |*file, i| {
@@ -122,7 +122,7 @@ export fn fs_find(name_ptr: [*]const u8, name_len: u8) i32 {
 }
 
 // List files (returns count, fills buffer with file IDs)
-export fn fs_list(buffer: [*]u8) u8 {
+pub export fn fs_list(buffer: [*]u8) u8 {
     var count: u8 = 0;
     for (&files, 0..) |*file, i| {
         if (file.used) {
@@ -134,7 +134,7 @@ export fn fs_list(buffer: [*]u8) u8 {
 }
 
 // Get filename
-export fn fs_getname(file_id: u8, buffer: [*]u8) i32 {
+pub export fn fs_getname(file_id: u8, buffer: [*]u8) i32 {
     if (file_id >= MAX_FILES) return -1;
     if (!files[file_id].used) return -1;
     

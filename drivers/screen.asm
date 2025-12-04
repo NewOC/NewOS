@@ -1,6 +1,30 @@
 ; Screen driver - VGA text mode output
 ; Provides: clear_screen, print_string, print_char, scroll
 
+; Export for Zig (cdecl wrappers)
+global zig_print_char
+global zig_print_string
+
+; Wrapper for Zig (gets char from stack)
+zig_print_char:
+    push ebp
+    mov ebp, esp
+    mov al, [ebp + 8]   ; Get char from stack
+    call print_char
+    pop ebp
+    ret
+
+; Wrapper for Zig (gets string pointer from stack)
+zig_print_string:
+    push ebp
+    mov ebp, esp
+    push esi
+    mov esi, [ebp + 8]  ; Get string ptr from stack
+    call print_string
+    pop esi
+    pop ebp
+    ret
+
 clear_screen:
     pusha
     mov edi, VIDEO_MEMORY
