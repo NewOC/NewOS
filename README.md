@@ -61,7 +61,7 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit)
 
 ### Roadmap
 
-#### Console version (✅ Completed)
+#### Console version (Completed)
 - [x] Kernel
 - [x] Basic commands
 - [x] Keyboard input
