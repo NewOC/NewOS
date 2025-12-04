@@ -1,37 +1,32 @@
 @echo off
+echo Building NewOS...
 
-:: Check for required tools
-where nasm >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Error: NASM is not installed or not in PATH
-    echo Download from https://www.nasm.us/
+if not exist build mkdir build
+
+echo Assembling bootloader...
+nasm -f bin bootloader.asm -o build\bootloader.bin
+if errorlevel 1 (
+    echo Error assembling bootloader!
+    pause
     exit /b 1
 )
 
-:: Assemble bootloader
-nasm -f bin bootloader.asm -o bootloader.bin
-if not exist bootloader.bin (
-    echo Error: Failed to assemble bootloader
+echo Assembling kernel...
+nasm -f bin kernel32.asm -o build\kernel32.bin
+if errorlevel 1 (
+    echo Error assembling kernel!
+    pause
     exit /b 1
 )
 
-:: Assemble kernel
-nasm -f bin kernel.asm -o kernel.bin
-if not exist kernel.bin (
-    echo Error: Failed to assemble kernel
-    exit /b 1
-)
+echo Creating image...
+copy /b build\bootloader.bin + build\kernel32.bin build\os-image.bin
 
-:: Create disk image (Windows alternative to dd)
-fsutil file createnew os.img 1474560 >nul
-
-:: Write bootloader to first sector
-copy /b bootloader.bin /y os.img >nul
-
-:: Write kernel to second sector
-copy /b os.img + kernel.bin /y os.img >nul
-
-:: Clean up temporary files
-del bootloader.bin kernel.bin bootloader.hex kernel.hex
-
-echo Build complete! Run with: qemu-system-i386 -fda os.img
+echo.
+echo Build successful!
+dir build\bootloader.bin | findstr bootloader
+dir build\kernel32.bin | findstr kernel32
+dir build\os-image.bin | findstr os-image
+echo.
+echo Run: qemu-system-i386 -fda build\os-image.bin
+pause

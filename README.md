@@ -6,30 +6,88 @@
 ![GitHub License](https://img.shields.io/github/license/NewOC/NewOS)
 ![GitHub issues](https://img.shields.io/github/issues/NewOC/NewOS)
 
-## TODO
+## 32-bit Protected Mode OS
 
-### Console version
-- [ ] Kernel
-- [ ] Commands
-- [ ] Interact with Internet
-- [ ] User settings
-- [ ] Interact with file system
-- [ ] Interact with files
-- [ ] Interact with disks
-- [ ] System information
-- [ ] Setup OS on disk
-- [ ] Auto fix problems with OS
-- [ ] Send found bugs to GitHub
+NewOS is a simple operating system that successfully boots from 16-bit real mode into 32-bit protected mode with a working console!
+
+### Features
+
+- ✅ **Bootloader** - Loads from disk and switches to protected mode
+- ✅ **32-bit Kernel** - Runs in x86 protected mode
+- ✅ **VGA Text Driver** - Screen output with automatic scrolling
+- ✅ **Keyboard Driver** - Full keyboard input support
+- ✅ **Command Shell** - Interactive console with commands
+- ✅ **Commands**: `help`, `clear`, `about`
+
+### Building and Running
+
+**Requirements:**
+- NASM assembler
+- QEMU emulator
+
+**Build:**
+```bash
+.\build.bat
+```
+
+**Run:**
+```bash
+qemu-system-i386 -fda build\os-image.bin
+```
+
+### Available Commands
+
+- `help` - Show available commands
+- `clear` - Clear screen
+- `about` - Show OS information
+
+### Architecture
+
+```
+BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit)
+```
+
+**Bootloader:**
+- Loads kernel from disk
+- Sets up GDT (Global Descriptor Table)
+- Switches CPU to protected mode
+- Jumps to kernel
+
+**Kernel:**
+- VGA text mode driver (0xb8000)
+- Keyboard driver (ports 0x60/0x64)
+- Command shell with input buffer
+- Backspace and Enter support
+
+### Roadmap
+
+#### Console version (✅ Completed)
+- [x] Kernel
+- [x] Basic commands
+- [x] Keyboard input
+- [x] Screen management
+- [ ] File system interaction
+- [ ] Disk operations
+- [ ] System information commands
 - [ ] Package manager
 
-### GUI (UNDER CONSTRUCTION)
-- [ ] Desktop
-- [ ] Apps
-- [ ] Apps support
-- [ ] Settings
-- [ ] Multi-language
-- [ ] System control GUI
-- [ ] GUI Optimization
-- [ ] Animations
+#### Future improvements
+- [ ] IDT (Interrupt Descriptor Table)
+- [ ] Timer (PIT)
+- [ ] Paging and virtual memory
+- [ ] FAT12/FAT16 file system
+- [ ] More shell commands
+- [ ] Color support
+- [ ] Multi-tasking
 
-And much more...
+### Author
+
+**MinecAnton209**
+
+### License
+
+See LICENSE file for details.
+
+---
+
+**Made with ❤️ in x86 Assembly**
