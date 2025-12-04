@@ -1,7 +1,10 @@
 ; NewOS Kernel - 32-bit Protected Mode
 ; Main entry point and module includes
-[org 0x1000]
 [bits 32]
+
+; Put entry point in .text.start section to ensure it's first
+section .text.start
+global start
 
 ; Constants
 VIDEO_MEMORY equ 0xb8000
@@ -17,6 +20,7 @@ KEY_DOWN equ 0x81
 KEY_LEFT equ 0x82
 KEY_RIGHT equ 0x83
 
+section .data
 ; BSS - Variables
 cursor_row db 0
 cursor_col db 0
@@ -32,6 +36,7 @@ history_lens times 10 db 0
 history_count db 0
 history_index db 0
 
+section .text
 ; Entry point
 start:
     call clear_screen

@@ -1,6 +1,20 @@
+# Build output
+build/
+*.bin
+*.o
+*.elf
 os.img
-build\
-bootloader.bin
-kernel32.bin
-bootloader_simple.bin
-os-image.bin
+
+# Zig
+zig/.zig-cache/
+zig/build/
+zig/zig-out/
+
+# Editor
+.vscode/
+*.swp
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
