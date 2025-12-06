@@ -10,6 +10,7 @@ pub const Statement = struct {
 pub const CmdType = enum {
     print,
     set_string,
+    set_int,
     exit,
     unknown,
     empty,
@@ -47,6 +48,24 @@ pub fn parseStatement(buffer: []const u8, start: usize) Statement {
         
         return .{ 
             .cmd_type = .set_string, 
+            .arg_start = arg_start, 
+            .arg_len = arg_end - arg_start 
+        };
+    }
+    
+    // Check for set int
+    // Format: set int <name> = <expr>;
+    if (common.startsWith(buffer[pos..], "set int ")) {
+        const arg_start = pos + 8; // "set int " len is 8
+        var arg_end = arg_start;
+        
+        // Find semicolon
+        while (arg_end < buffer.len and buffer[arg_end] != ';' and buffer[arg_end] != 0) {
+            arg_end += 1;
+        }
+        
+        return .{ 
+            .cmd_type = .set_int, 
             .arg_start = arg_start, 
             .arg_len = arg_end - arg_start 
         };
