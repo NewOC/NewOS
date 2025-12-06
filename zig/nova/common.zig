@@ -5,6 +5,9 @@ pub const print_char = common.print_char;
 pub const printZ = common.printZ;
 pub const printNum = common.printNum;
 
+pub const reboot = common.reboot;
+pub const shutdown = common.shutdown;
+
 // String utilities
 pub fn streq(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;

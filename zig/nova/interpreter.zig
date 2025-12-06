@@ -19,7 +19,7 @@ pub fn start() void {
     exit_flag = false;
     
     // Welcome
-    common.printZ("Nova Language v0.3\n");
+    common.printZ("Nova Language v0.4\n");
     common.printZ("Commands: print(\"text\"); exit();\n");
     
     // REPL loop

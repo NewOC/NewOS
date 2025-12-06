@@ -10,6 +10,8 @@ extern cmd_touch
 extern cmd_rm
 extern cmd_write
 extern cmd_echo
+extern cmd_reboot
+extern cmd_shutdown
 extern nova_start
 
 global read_command
@@ -254,6 +256,16 @@ execute_command:
     call strcmp
     je .nova
     
+    mov esi, cmd_buffer
+    mov edi, cmd_reboot_str
+    call strcmp
+    je .do_reboot
+    
+    mov esi, cmd_buffer
+    mov edi, cmd_shutdown_str
+    call strcmp
+    je .do_shutdown
+    
     ; ls command
     mov esi, cmd_buffer
     mov edi, cmd_ls_str
@@ -308,6 +320,14 @@ execute_command:
 
 .nova:
     call nova_start
+    jmp .done
+
+.do_reboot:
+    call cmd_reboot
+    jmp .done
+
+.do_shutdown:
+    call cmd_shutdown
     jmp .done
 
 .do_ls:

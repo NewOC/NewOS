@@ -281,6 +281,8 @@ pub fn execute(buffer: []const u8, stmt: parser.Statement, exit_flag: *bool) voi
         .set_string => execSetString(buffer, stmt),
         .set_int => execSetInt(buffer, stmt),
         .print => execPrint(buffer, stmt),
+        .reboot => common.reboot(),
+        .shutdown => common.shutdown(),
         .exit => exit_flag.* = true,
         .unknown => common.printZ("Syntax Error\n"),
         .empty => {},

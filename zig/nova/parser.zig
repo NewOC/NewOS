@@ -12,6 +12,8 @@ pub const CmdType = enum {
     set_string,
     set_int,
     exit,
+    reboot,
+    shutdown,
     unknown,
     empty,
 };
@@ -33,6 +35,16 @@ pub fn parseStatement(buffer: []const u8, start: usize) Statement {
     // Check for exit();
     if (common.startsWith(buffer[pos..], "exit();")) {
         return .{ .cmd_type = .exit, .arg_start = 0, .arg_len = 0 };
+    }
+    
+    // Check for reboot();
+    if (common.startsWith(buffer[pos..], "reboot();")) {
+        return .{ .cmd_type = .reboot, .arg_start = 0, .arg_len = 0 };
+    }
+    
+    // Check for shutdown();
+    if (common.startsWith(buffer[pos..], "shutdown();")) {
+        return .{ .cmd_type = .shutdown, .arg_start = 0, .arg_len = 0 };
     }
     
     // Check for set string

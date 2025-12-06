@@ -12,6 +12,8 @@ pub const cmd_rm = shell_cmds.cmd_rm;
 pub const cmd_echo = shell_cmds.cmd_echo;
 pub const cmd_write = shell_cmds.cmd_write;
 pub const cmd_panic = shell_cmds.cmd_panic;
+pub const cmd_reboot = shell_cmds.cmd_reboot;
+pub const cmd_shutdown = shell_cmds.cmd_shutdown;
 
 // External Assembly Functions
 extern fn read_command() void;

@@ -36,6 +36,14 @@ export fn cmd_panic() void {
     kernel_panic(msg.ptr, msg.len);
 }
 
+export fn cmd_reboot() void {
+    common.reboot();
+}
+
+export fn cmd_shutdown() void {
+    common.shutdown();
+}
+
 // Initialize (called once at boot)
 pub export fn zig_init() void {
     common.fs_init();
