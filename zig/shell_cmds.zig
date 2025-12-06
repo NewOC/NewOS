@@ -29,8 +29,15 @@ export fn cmd_echo(text_ptr: [*]const u8, text_len: u16) void {
     echo.execute(text_ptr, text_len);
 }
 
+extern fn kernel_panic(msg_ptr: [*]const u8, msg_len: usize) noreturn;
+
+export fn cmd_panic() void {
+    const msg = "User initiated panic!";
+    kernel_panic(msg.ptr, msg.len);
+}
+
 // Initialize (called once at boot)
-export fn zig_init() void {
+pub export fn zig_init() void {
     common.fs_init();
 }
 

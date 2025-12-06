@@ -32,30 +32,38 @@ pub fn start() void {
 
 fn readLine() void {
     buf_len = 0;
+    // Очищаем буфер
     for (&buffer) |*b| b.* = 0;
     
     while (true) {
         const key = wait_key();
         
-        if (key == 10) { // Enter
+        // Enter (Код 10 или 13)
+        if (key == 10 or key == 13) { 
             common.print_char('\n');
             return;
         }
         
-        if (key == 8) { // Backspace
+        // Backspace (Код 8) или Delete (Код 127)
+        // ДОБАВЛЕНО: проверка key == 127
+        if (key == 8 or key == 127) { 
             if (buf_len > 0) {
                 buf_len -= 1;
                 buffer[buf_len] = 0;
-                // Visual backspace handled by wait_key? 
-                // Need to print backspace sequence
+                
+                // Визуальное удаление символа с экрана:
+                // 1. Шаг назад
                 common.print_char(8);
+                // 2. Затираем символ пробелом
                 common.print_char(' ');
+                // 3. Шаг назад снова (чтобы курсор встал на место стертого)
                 common.print_char(8);
             }
             continue;
         }
         
-        // Regular character
+        // Обычные символы (от пробела до тильды)
+        // Исключаем 127, чтобы он не печатался как мусор
         if (buf_len < BUFFER_SIZE - 1 and key >= 32 and key < 127) {
             buffer[buf_len] = key;
             buf_len += 1;

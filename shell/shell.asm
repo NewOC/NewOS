@@ -12,6 +12,9 @@ extern cmd_write
 extern cmd_echo
 extern nova_start
 
+global read_command
+global execute_command
+
 read_command:
     pusha
     

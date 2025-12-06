@@ -36,7 +36,7 @@ popd
 
 :: Link kernel with Zig modules (strip during link)
 echo Linking...
-zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build\kernel32.elf build\kernel32.o zig\build\shell_cmds.o zig\build\nova.o
+zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build\kernel32.elf build\kernel32.o zig\build\kernel.o
 if %errorlevel% neq 0 (
     echo Error linking!
     pause

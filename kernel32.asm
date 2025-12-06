@@ -39,9 +39,13 @@ history_index db 0
 section .text
 ; External Zig initialization
 extern zig_init
+extern kmain
 
 ; Entry point
 start:
+    mov esp, 0x90000
+    mov ebp, esp
+    
     call clear_screen
     
     ; Initialize Zig modules (file system)
@@ -53,13 +57,13 @@ start:
     mov esi, help_msg
     call print_string
 
-main_loop:
-    mov esi, prompt
-    call print_string
+    ; Transfer control to Zig Kernel
+    call kmain
     
-    call read_command
-    call execute_command
-    jmp main_loop
+    ; Should never return
+    cli
+    hlt
+    jmp $
 
 ; Include modules
 %include "drivers/screen.asm"
