@@ -12,23 +12,47 @@ start:
     
     mov [BOOT_DRIVE], dl
     
-    ; Load kernel from disk
-    mov bx, KERNEL_OFFSET
-    mov dh, 10
-    mov dl, [BOOT_DRIVE]
-    
     ; Reset disk
     mov ah, 0x00
-    int 0x13
-    
-    ; Read sectors
-    mov ah, 0x02
-    mov al, 10
-    mov ch, 0x00
-    mov cl, 0x02
-    mov dh, 0x00
     mov dl, [BOOT_DRIVE]
     int 0x13
+    
+    ; Load kernel (50 sectors safe loop)
+    mov bx, KERNEL_OFFSET
+    mov bp, 50              ; Number of sectors to read
+    
+    mov dh, 0               ; Head
+    mov ch, 0               ; Cylinder
+    mov cl, 2               ; Sector
+    
+read_loop:
+    mov ah, 0x02
+    mov al, 1
+    mov dl, [BOOT_DRIVE]
+    int 0x13
+    jc disk_error
+    
+    add bx, 512
+    dec bp
+    jz read_done
+    
+    inc cl
+    cmp cl, 19
+    jl read_loop
+    
+    mov cl, 1
+    inc dh
+    cmp dh, 2
+    jl read_loop
+    
+    mov dh, 0
+    inc ch
+    jmp read_loop
+    
+disk_error:
+    jmp $
+
+read_done:
     
     ; Clear screen (BIOS interrupt)
     mov ah, 0x00

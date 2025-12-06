@@ -9,6 +9,7 @@ pub const Statement = struct {
 
 pub const CmdType = enum {
     print,
+    set_string,
     exit,
     unknown,
     empty,
@@ -33,13 +34,36 @@ pub fn parseStatement(buffer: []const u8, start: usize) Statement {
         return .{ .cmd_type = .exit, .arg_start = 0, .arg_len = 0 };
     }
     
-    // Check for print("
-    if (common.startsWith(buffer[pos..], "print(\"")) {
-        const arg_start = pos + 7; // After print("
+    // Check for set string
+    // Format: set string <name> = <expr>;
+    if (common.startsWith(buffer[pos..], "set string ")) {
+        const arg_start = pos + 11; // "set string " len is 11
         var arg_end = arg_start;
         
-        // Find closing "
-        while (arg_end < buffer.len and buffer[arg_end] != '"' and buffer[arg_end] != 0) {
+        // Find semicolon
+        while (arg_end < buffer.len and buffer[arg_end] != ';' and buffer[arg_end] != 0) {
+            arg_end += 1;
+        }
+        
+        return .{ 
+            .cmd_type = .set_string, 
+            .arg_start = arg_start, 
+            .arg_len = arg_end - arg_start 
+        };
+    }
+    
+    // Check for print(
+    if (common.startsWith(buffer[pos..], "print(")) {
+        const arg_start = pos + 6; // After print(
+        var arg_end = arg_start;
+        
+        // Find closing );
+        // We look for ); specifically to be safe, or just )
+        // Example: print(1);
+        while (arg_end < buffer.len and buffer[arg_end] != 0) {
+            if (buffer[arg_end] == ')' and arg_end + 1 < buffer.len and buffer[arg_end + 1] == ';') {
+                break;
+            }
             arg_end += 1;
         }
         

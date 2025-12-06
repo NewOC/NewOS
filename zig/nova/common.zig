@@ -21,3 +21,17 @@ pub fn startsWith(str: []const u8, prefix: []const u8) bool {
     }
     return true;
 }
+
+pub fn indexOf(str: []const u8, char: u8) ?usize {
+    for (str, 0..) |c, i| {
+        if (c == char) return i;
+    }
+    return null;
+}
+
+pub fn copy(dest: []u8, src: []const u8) void {
+    const len = if (dest.len < src.len) dest.len else src.len;
+    for (0..len) |i| {
+        dest[i] = src[i];
+    }
+}
