@@ -1,7 +1,7 @@
 [bits 16]
 [org 0x7c00]
 
-KERNEL_OFFSET equ 0x1000
+KERNEL_OFFSET equ 0x10000
 
 start:
     xor ax, ax
@@ -18,7 +18,11 @@ start:
     int 0x13
     
     ; Load kernel (50 sectors safe loop)
-    mov bx, KERNEL_OFFSET
+    ; Use segment:offset addressing for 0x10000
+    ; ES = 0x1000, BX = 0 -> linear address = 0x1000 * 16 + 0 = 0x10000
+    mov ax, 0x1000
+    mov es, ax
+    xor bx, bx
     mov bp, 50              ; Number of sectors to read
     
     mov dh, 0               ; Head
