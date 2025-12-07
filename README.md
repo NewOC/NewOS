@@ -40,44 +40,53 @@ qemu-system-i386 -fda build\os-image.bin
 - `help` - Show available commands
 - `clear` - Clear screen
 - `about` - Show OS information
+- `nova` - Start Nova Language Interpreter
+- `reboot` - Reboot system
+- `shutdown` - Shutdown system
+- `ls`, `touch`, `rm`, `cat`, `echo` - RAM file system commands
+
+### Nova Language
+A custom interpreted language built into NewOS.
+
+**Features:**
+- Variables: `set string name = "Value";`, `set int age = 20;`
+- Arithmetic: `+`, `-`, `*`, `/`, `()` (e.g. `print((10+2)*5);`)
+- System: `reboot();`, `shutdown();`
 
 ### Architecture
 
 ```
-BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit)
+BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Zig Modules
 ```
 
 **Bootloader:**
-- Loads kernel from disk
+- Loads kernel from disk (50 sectors)
 - Sets up GDT (Global Descriptor Table)
 - Switches CPU to protected mode
 - Jumps to kernel
 
 **Kernel:**
+- Written in x86 Assembly and Zig
 - VGA text mode driver (0xb8000)
 - Keyboard driver (ports 0x60/0x64)
-- Command shell with input buffer
-- Backspace and Enter support
+- Command shell with history
+- Integrated Nova Interpreter
 
 ### Roadmap
 
-#### Console version (Completed)
+#### Console version (v0.3)
 - [x] Kernel
 - [x] Basic commands
 - [x] Keyboard input
 - [x] Screen management
-- [ ] File system interaction
-- [ ] Disk operations
-- [ ] System information commands
-- [ ] Package manager
+- [x] File system interaction (Mock/RAM)
+- [x] Nova Language
+- [x] System control (reboot/shutdown)
 
 #### Future improvements
 - [ ] IDT (Interrupt Descriptor Table)
 - [ ] Timer (PIT)
-- [ ] Paging and virtual memory
-- [ ] FAT12/FAT16 file system
-- [ ] More shell commands
-- [ ] Color support
+- [ ] FAT12/FAT16 file system (Real disk support)
 - [ ] Multi-tasking
 
 ### Author
@@ -90,4 +99,4 @@ See LICENSE file for details.
 
 ---
 
-**Made with ❤️ in x86 Assembly**
+**Made with ❤️ in x86 Assembly & Zig**
