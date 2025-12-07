@@ -4,6 +4,14 @@ build/
 *.o
 *.elf
 os.img
+NewOS.img
+NewOS.iso
+
+# Tools
+tools/mkiso
+tools/mkiso.exe
+tools/mkiso.o
+tools/mkiso.pdb
 
 # Zig
 zig/.zig-cache/
