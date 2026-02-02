@@ -4,7 +4,7 @@ const common = @import("common.zig");
 pub fn execute(name_ptr: [*]const u8, name_len: u8) void {
     const id = common.fs_find(name_ptr, name_len);
     if (id < 0) {
-        common.printZ("File not found\n");
+        common.printZ("File not found\r\n");
         return;
     }
     
@@ -14,5 +14,5 @@ pub fn execute(name_ptr: [*]const u8, name_len: u8) void {
     while (i < name_len) : (i += 1) {
         common.print_char(name_ptr[i]);
     }
-    common.print_char('\n');
+    common.printZ("\r\n");
 }

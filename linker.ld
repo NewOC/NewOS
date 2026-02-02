@@ -20,9 +20,12 @@ SECTIONS {
         *(.data*)
     }
     
+    sbss = .;
     .bss : {
         *(.bss*)
+        *(COMMON)
     }
+    ebss = .;
     
     /* Discard all debug and exception handling sections */
     /DISCARD/ : {

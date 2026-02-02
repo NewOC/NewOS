@@ -6,7 +6,7 @@ pub fn execute() void {
     const count = common.fs_list(&ids);
     
     if (count == 0) {
-        common.printZ("No files\n");
+        common.printZ("No files\r\n");
         return;
     }
     
@@ -24,6 +24,6 @@ pub fn execute() void {
         const size = common.fs_size(id);
         common.printZ("  ");
         common.printNum(size);
-        common.printZ(" bytes\n");
+        common.printZ(" bytes\r\n");
     }
 }

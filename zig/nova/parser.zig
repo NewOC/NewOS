@@ -32,8 +32,8 @@ pub fn parseStatement(buffer: []const u8, start: usize) Statement {
         return .{ .cmd_type = .empty, .arg_start = 0, .arg_len = 0 };
     }
     
-    // Check for exit();
-    if (common.startsWith(buffer[pos..], "exit();")) {
+    // Check for exit()
+    if (common.startsWith(buffer[pos..], "exit();") or common.startsWith(buffer[pos..], "exit()")) {
         return .{ .cmd_type = .exit, .arg_start = 0, .arg_len = 0 };
     }
     

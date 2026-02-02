@@ -2,6 +2,6 @@
 const interpreter = @import("nova/interpreter.zig");
 
 // Export nova_start for ASM
-export fn nova_start() void {
+pub export fn nova_start() void {
     interpreter.start();
 }
