@@ -1,22 +1,23 @@
 // ACPI (Advanced Configuration and Power Interface) Driver
-// Provides dynamic hardware shutdown support
+// Features dynamic AML parsing for S5 (Shutdown) state values
 const common = @import("../commands/common.zig");
 
 var pm1a_control_block: u16 = 0;
 var pm1b_control_block: u16 = 0;
 var smi_command_port: u32 = 0;
 var acpi_enable_val: u8 = 0;
+
 var slp_typa: u16 = 0;
 var slp_typb: u16 = 0;
 var slp_en: u16 = 0x2000;
 
 fn find_rsdp() ?usize {
     const signature = "RSD PTR ";
-    var addr: usize = 0x80000; // Search EBDA
+    var addr: usize = 0x80000;
     while (addr < 0xA0000) : (addr += 16) {
         if (check_signature_at(addr, signature)) return addr;
     }
-    addr = 0xE0000; // Search BIOS ROM
+    addr = 0xE0000;
     while (addr < 0x100000) : (addr += 16) {
         if (check_signature_at(addr, signature)) return addr;
     }
@@ -42,22 +43,76 @@ pub fn init() bool {
     while (i < num_entries) : (i += 1) {
         const table_addr = read_u32(rsdt_addr + 36 + (i * 4));
         if (check_signature_at(table_addr, "FACP")) {
+            // 1. Get Power Ports
             smi_command_port = read_u32(table_addr + 48);
             acpi_enable_val = read_u8(table_addr + 52);
             pm1a_control_block = @intCast(read_u32(table_addr + 64) & 0xFFFF);
             pm1b_control_block = @intCast(read_u32(table_addr + 68) & 0xFFFF);
 
+            // 2. Enable ACPI mode
             if (smi_command_port != 0 and acpi_enable_val != 0) {
                 outb(@intCast(smi_command_port), acpi_enable_val);
                 common.sleep(10);
             }
-            slp_typa = 5 << 10;
-            slp_typb = 5 << 10;
+
+            // 3. Find DSDT and parse _S5 state
+            const dsdt_addr = read_u32(table_addr + 40);
+            if (parse_s5(dsdt_addr)) {
+                //common.printZ("ACPI: Found _S5 package in DSDT\n");
+            } else {
+                common.printZ("ACPI: _S5 not found, using failsafe values\n");
+                slp_typa = 5 << 10;
+                slp_typb = 5 << 10;
+            }
             
-            //common.printZ("ACPI: Power Management initialized (Port: ");
-            //common.printNum(@intCast(pm1a_control_block));
-            //common.printZ(")\n");
             return true;
+        }
+    }
+    return false;
+}
+
+/// Simple AML parser to find \_S5_ (Shutdown) package
+fn parse_s5(dsdt_addr: usize) bool {
+    const dsdt_len = read_u32(dsdt_addr + 4);
+    const ptr = @as([*]const u8, @ptrFromInt(dsdt_addr));
+    
+    // Search for "_S5_" signature in AML bytecode
+    var i: usize = 36; // Skip header
+    while (i < dsdt_len - 4) : (i += 1) {
+        if (ptr[i] == '_' and ptr[i+1] == 'S' and ptr[i+2] == '5' and ptr[i+3] == '_') {
+            // Found Name("_S5_", Package(...))
+            // Typical pattern: 08 5F 53 35 5F 12 [pkg_len] [num_elements] 0A [val_a] 0A [val_b]
+            
+            // Check for NameOp (08) before or after
+            const search_idx = i + 4;
+            
+            // Search for PackageOp (0x12) within next few bytes
+            var j: usize = search_idx;
+            while (j < search_idx + 8 and j < dsdt_len) : (j += 1) {
+                if (ptr[j] == 0x12) { // PackageOp
+                    // Skip PkgLength (1-4 bytes) and NumElements (1 byte)
+                    // We'll just look for the FIRST two BytePrefix (0x0A) or small constants
+                    var k = j + 1;
+                    // Skip PkgLength
+                    if ((ptr[k] & 0xC0) == 0) k += 1
+                    else if ((ptr[k] & 0xC0) == 0x40) k += 2
+                    else if ((ptr[k] & 0xC0) == 0x80) k += 3
+                    else k += 4;
+                    
+                    k += 1; // Skip NumElements
+
+                    // Extract Type A
+                    if (ptr[k] == 0x0A) k += 1; // BytePrefix
+                    slp_typa = @as(u16, ptr[k]) << 10;
+                    k += 1;
+
+                    // Extract Type B
+                    if (ptr[k] == 0x0A) k += 1; // BytePrefix
+                    slp_typb = @as(u16, ptr[k]) << 10;
+                    
+                    return true;
+                }
+            }
         }
     }
     return false;
@@ -65,15 +120,12 @@ pub fn init() bool {
 
 pub fn shutdown() noreturn {
     if (pm1a_control_block != 0) {
-        // 1. Try standard ACPI
         outw(pm1a_control_block, slp_typa | slp_en);
         if (pm1b_control_block != 0) outw(pm1b_control_block, slp_typb | slp_en);
-        common.sleep(50);
-        // 2. Try force (for QEMU/Bochs)
+        common.sleep(100);
+        // Fallback Force
         outw(pm1a_control_block, slp_en);
-        if (pm1b_control_block != 0) outw(pm1b_control_block, slp_en);
     }
-    common.printZ("Shutdown failed. System halted.\n");
     while (true) asm volatile ("hlt");
 }
 
