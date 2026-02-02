@@ -9,6 +9,7 @@ const shell = @import("shell.zig");
 const messages = @import("messages.zig");
 const timer = @import("drivers/timer.zig");
 const acpi = @import("drivers/acpi.zig");
+const memory = @import("memory.zig");
 
 
 // Ensure all modules are included in the compilation
@@ -20,8 +21,8 @@ comptime {
     _ = messages;
     _ = timer;
     _ = acpi;
+    _ = memory;
     _ = @import("drivers/vga.zig");
-
 }
 
 // External shell functions (exported by shell.zig)
@@ -91,8 +92,13 @@ fn inb(port: u16) u8 {
     );
 }
 
-/// Main entry point called by kernel32.asm
+// --- Kernel Entry Point ---
 export fn kmain() void {
+    // 1. Initialize PMM & Heap
+    memory.pmm.init();
+    memory.heap.init();
+    
+    // 2. Initialize timer and interrupt controllers
     // Initialize file system
     shell_cmds.zig_init();
     

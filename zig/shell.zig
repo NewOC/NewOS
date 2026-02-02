@@ -151,6 +151,25 @@ pub export fn execute_command() void {
     } else if (common.startsWith(cmd, "echo ")) {
         const text = cmd[5..];
         shell_cmds.cmd_echo(text.ptr, @intCast(text.len));
+    } else if (common.std_mem_eql(cmd, "mem")) {
+        const memory_mod = @import("memory.zig");
+        common.printZ("Testing Allocator v0.5:\n");
+        const ptr = memory_mod.heap.alloc(64);
+        if (ptr) |p| {
+            common.printZ("1. Alloc(64) Success: 0x");
+            common.printNum(@intCast(@intFromPtr(p)));
+            common.printZ("\n");
+            
+            common.printZ("2. Running Free...\n");
+            memory_mod.heap.free(p);
+            
+            common.printZ("3. Triggering GC...\n");
+            memory_mod.heap.garbage_collect();
+            
+            common.printZ("Memory test complete.\n");
+        } else {
+            common.printZ("Allocation failed!\n");
+        }
     } else {
         common.printZ("Unknown: [");
         common.printZ(cmd);
