@@ -6,6 +6,7 @@ build/
 os.img
 NewOS.img
 NewOS.iso
+qemu.log
 
 # Tools
 tools/mkiso

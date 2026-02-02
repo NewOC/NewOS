@@ -5,6 +5,8 @@ const common = @import("common.zig");
 const parser = @import("parser.zig");
 const commands = @import("commands.zig");
 const keyboard = @import("../keyboard_isr.zig");
+const versioning = @import("../versioning.zig");
+
 
 // External screen functions
 extern fn zig_print_char(c: u8) void;
@@ -21,7 +23,7 @@ pub fn start() void {
     exit_flag = false;
     
     // Welcome message
-    common.printZ("Nova Language v0.4\n");
+    common.printZ("Nova Language v" ++ versioning.NOVA_VERSION ++ "\n");
     common.printZ("Commands: print(\"text\"); exit();\n");
     
     // Main REPL loop (Read-Eval-Print Loop)

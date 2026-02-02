@@ -5,6 +5,8 @@ const shell_cmds = @import("shell_cmds.zig");
 const nova = @import("nova.zig");
 const messages = @import("messages.zig");
 const vga = @import("drivers/vga.zig");
+const versioning = @import("versioning.zig");
+
 
 // Shell configuration
 const HISTORY_SIZE = 10;
@@ -122,7 +124,7 @@ pub export fn execute_command() void {
         vga.clear_screen();
         messages.print_welcome();
     } else if (common.std_mem_eql(cmd, "about")) {
-        common.printZ("NewOS v0.4\r\n");
+        common.printZ("NewOS v" ++ versioning.NEWOS_VERSION ++ "\r\n");
         common.printZ("32-bit Protected Mode OS\r\n");
         common.printZ("x86 + Zig kernel modules\r\n");
         common.printZ("=== By MinecAnton209 ===\r\n");
