@@ -52,7 +52,7 @@ pub const fs_write   = fs.fs_write;
 // --- System Control (I/O Ports) ---
 
 /// Send a byte to an I/O port
-fn outb(port: u16, value: u8) void {
+pub fn outb(port: u16, value: u8) void {
     asm volatile ("outb %[value], %[port]"
         :
         : [value] "{al}" (value),
@@ -61,11 +61,27 @@ fn outb(port: u16, value: u8) void {
 }
 
 /// Send a word (16-bit) to an I/O port
-fn outw(port: u16, value: u16) void {
+pub fn outw(port: u16, value: u16) void {
     asm volatile ("outw %[value], %[port]"
         :
         : [value] "{ax}" (value),
           [port] "{dx}" (port),
+    );
+}
+
+/// Read a byte from an I/O port
+pub fn inb(port: u16) u8 {
+    return asm volatile ("inb %[port], %[ret]"
+        : [ret] "={al}" (-> u8),
+        : [port] "{dx}" (port),
+    );
+}
+
+/// Read a word (16-bit) from an I/O port
+pub fn inw(port: u16) u16 {
+    return asm volatile ("inw %[port], %[ret]"
+        : [ret] "={ax}" (-> u16),
+        : [port] "{dx}" (port),
     );
 }
 

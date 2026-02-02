@@ -8,6 +8,7 @@ const rm = @import("commands/rm.zig");
 const echo = @import("commands/echo.zig");
 const common = @import("commands/common.zig");
 const timer = @import("drivers/timer.zig");
+const disk_cmds = @import("commands/disk_cmds.zig");
 
 
 /// Execute 'ls' command
@@ -51,6 +52,21 @@ pub export fn cmd_uptime() void {
     common.printZ("Uptime: ");
     common.printNum(@intCast(s));
     common.printZ(" seconds\r\n");
+}
+
+/// Execute 'lsdsk' command
+pub export fn cmd_lsdsk() void {
+    disk_cmds.lsdsk();
+}
+
+/// Execute 'mkfs-fat12' command
+pub export fn cmd_mkfs_fat12(drive_num_ptr: [*]const u8, drive_num_len: u32) void {
+    if (drive_num_len == 0) {
+        common.printZ("Usage: mkfs-fat12 <drive_num>\n");
+        return;
+    }
+    const drive_num = drive_num_ptr[0] - '0';
+    disk_cmds.mkfs_fat12(@intCast(drive_num));
 }
 
 

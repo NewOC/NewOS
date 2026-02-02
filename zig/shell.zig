@@ -117,6 +117,8 @@ pub export fn execute_command() void {
         common.printZ("  reboot         - Reboot PC\n");
         common.printZ("  shutdown       - Shutdown PC\n");
         common.printZ("  ls             - List files\n");
+        common.printZ("  lsdsk          - List disks\n");
+        common.printZ("  mkfs-fat12 <d> - Format disk with FAT12\n");
         common.printZ("  touch <file>   - Create file\n");
         common.printZ("  rm <file>      - Delete file\n");
         common.printZ("  cat <file>     - Show contents\n");
@@ -139,6 +141,11 @@ pub export fn execute_command() void {
         shell_cmds.cmd_shutdown();
     } else if (common.std_mem_eql(cmd, "ls")) {
         shell_cmds.cmd_ls();
+    } else if (common.std_mem_eql(cmd, "lsdsk")) {
+        shell_cmds.cmd_lsdsk();
+    } else if (common.startsWith(cmd, "mkfs-fat12 ")) {
+        const arg = cmd[11..];
+        shell_cmds.cmd_mkfs_fat12(arg.ptr, @intCast(arg.len));
     } else if (common.startsWith(cmd, "touch ")) {
         const filename = cmd[6..];
         shell_cmds.cmd_touch(filename.ptr, @intCast(filename.len));
@@ -172,16 +179,16 @@ pub export fn execute_command() void {
         }
     } else {
         common.printZ("Unknown: [");
-        common.printZ(cmd);
-        common.printZ("] (Len: ");
-        common.printNum(@intCast(cmd_len));
-        common.printZ(") Hex: ");
-        for (cmd) |c| {
-            const hex = "0123456789ABCDEF";
-            common.print_char(hex[c >> 4]);
-            common.print_char(hex[c & 0x0F]);
-            common.print_char(' ');
-        }
+        //common.printZ(cmd);
+        //common.printZ("] (Len: ");
+        //common.printNum(@intCast(cmd_len));
+        //common.printZ(") Hex: ");
+        //for (cmd) |c| {
+        //    const hex = "0123456789ABCDEF";
+        //    common.print_char(hex[c >> 4]);
+        //    common.print_char(hex[c & 0x0F]);
+        //    common.print_char(' ');
+        //}
         common.printZ("\n");
     }
 }

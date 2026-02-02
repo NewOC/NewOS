@@ -7,6 +7,17 @@ pub fn build(b: *std.Build) void {
         .os_tag = .freestanding,
         .abi = .none,
         .ofmt = .elf,
+        .cpu_features_sub = std.Target.x86.featureSet(&[_]std.Target.x86.Feature{
+            .mmx,
+            .sse,
+            .sse2,
+            .sse3,
+            .ssse3,
+            .sse4_1,
+            .sse4_2,
+            .avx,
+            .avx2,
+        }),
     });
 
     const optimize = .ReleaseSmall;
