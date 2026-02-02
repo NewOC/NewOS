@@ -7,6 +7,8 @@ const nova = @import("nova.zig");
 const common = @import("commands/common.zig");
 const shell = @import("shell.zig");
 const messages = @import("messages.zig");
+const timer = @import("drivers/timer.zig");
+
 
 // Ensure all modules are included in the compilation
 comptime {
@@ -15,7 +17,9 @@ comptime {
     _ = nova;
     _ = shell;
     _ = messages;
+    _ = timer;
     _ = @import("drivers/vga.zig");
+
 }
 
 // External shell functions (exported by shell.zig)
@@ -89,6 +93,10 @@ fn inb(port: u16) u8 {
 export fn kmain() void {
     // Initialize file system
     shell_cmds.zig_init();
+    
+    // Initialize system timer
+    timer.init();
+
 
     // Main Shell loop
     while (true) {

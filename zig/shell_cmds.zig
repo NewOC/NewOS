@@ -7,6 +7,8 @@ const touch = @import("commands/touch.zig");
 const rm = @import("commands/rm.zig");
 const echo = @import("commands/echo.zig");
 const common = @import("commands/common.zig");
+const timer = @import("drivers/timer.zig");
+
 
 /// Execute 'ls' command
 pub export fn cmd_ls() void {
@@ -42,6 +44,15 @@ pub export fn cmd_reboot() void {
 pub export fn cmd_shutdown() void {
     common.shutdown();
 }
+
+/// Execute 'uptime' command
+pub export fn cmd_uptime() void {
+    const s = timer.get_uptime();
+    common.printZ("Uptime: ");
+    common.printNum(@intCast(s));
+    common.printZ(" seconds\r\n");
+}
+
 
 /// Global initialization for Zig-based modules (FS, etc.)
 pub export fn zig_init() void {

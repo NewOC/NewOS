@@ -23,8 +23,10 @@ pub fn start() void {
     exit_flag = false;
     
     // Welcome message
-    common.printZ("Nova Language v" ++ versioning.NOVA_VERSION ++ "\n");
-    common.printZ("Commands: print(\"text\"); exit();\n");
+    common.printZ(
+        "Nova Language v" ++ versioning.NOVA_VERSION ++ "\n" ++
+        "Commands: print(\"text\"); exit();\n"
+    );
     
     // Main REPL loop (Read-Eval-Print Loop)
     while (!exit_flag) {

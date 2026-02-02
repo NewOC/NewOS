@@ -10,6 +10,8 @@ global test_divide_by_zero
 
 ; External Zig ISR handlers
 extern isr_keyboard
+extern isr_timer
+
 
 section .data
 align 16
@@ -67,10 +69,11 @@ idt_init:
     ; Flush keyboard buffer
     in al, 0x60
     
-    ; 7. Unmask IRQ1 (Keyboard)
+    ; 7. Unmask IRQ0 (Timer) and IRQ1 (Keyboard)
     in al, 0x21
-    and al, 0xfd
+    and al, 0xfc        ; 11111100b - Unmask IRQ0 and IRQ1
     out 0x21, al
+
     
     popa
     ret
@@ -116,13 +119,28 @@ isr_keyboard_wrapper:
     popad
     iret
 
-; ISR Wrapper: Timer (IRQ0) - Currently just sends EOI
+; ISR Wrapper: Timer (IRQ0)
 isr_timer_wrapper:
-    push eax
+    pushad
+    
+    ; Ensure segment registers are set to kernel data
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    
+    cld                 ; Clear direction flag for Zig
+    
+    call isr_timer      ; Call actual logic in timer.zig
+    
+    ; Send End Of Interrupt (EOI) to Master PIC
     mov al, 0x20
     out 0x20, al
-    pop eax
+    
+    popad
     iret
+
 
 extern kernel_panic
 

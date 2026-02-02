@@ -3,6 +3,8 @@
 
 const fs = @import("../fs.zig");
 const vga = @import("../drivers/vga.zig");
+const timer = @import("../drivers/timer.zig");
+
 
 // --- VGA Interface ---
 /// Low-level character output
@@ -80,6 +82,12 @@ pub fn shutdown() noreturn {
     printZ("Shutdown failed! (System halted.)\r\n");
     while(true) asm volatile("hlt");
 }
+
+/// Precise sleep in milliseconds
+pub fn sleep(ms: usize) void {
+    timer.sleep(ms);
+}
+
 
 /// Check if two memory slices are equal
 pub fn std_mem_eql(a: []const u8, b: []const u8) bool {
