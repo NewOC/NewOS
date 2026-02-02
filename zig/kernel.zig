@@ -8,6 +8,7 @@ const common = @import("commands/common.zig");
 const shell = @import("shell.zig");
 const messages = @import("messages.zig");
 const timer = @import("drivers/timer.zig");
+const acpi = @import("drivers/acpi.zig");
 
 
 // Ensure all modules are included in the compilation
@@ -18,6 +19,7 @@ comptime {
     _ = shell;
     _ = messages;
     _ = timer;
+    _ = acpi;
     _ = @import("drivers/vga.zig");
 
 }
@@ -96,6 +98,9 @@ export fn kmain() void {
     
     // Initialize system timer
     timer.init();
+    
+    // Initialize ACPI (for proper shutdown)
+    _ = acpi.init();
 
 
     // Main Shell loop

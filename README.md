@@ -13,16 +13,19 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 ### Features
 
 - ✅ **Bootloader** - Loads from disk and switches to protected mode
-- ✅ **32-bit Kernel** - Runs in x86 protected mode
+- ✅ **32-bit Kernel** - Runs in x86 protected mode (Assembly + Zig)
+- ✅ **IDT Support** - Interrupt Descriptor Table with exception handling
+- ✅ **PIT Timer** - System timer (1kHz) for precise timing and uptime
 - ✅ **VGA Text Driver** - Screen output with automatic scrolling
-- ✅ **Keyboard Driver** - Full keyboard input support
-- ✅ **Command Shell** - Interactive console with commands
-- ✅ **Commands**: `help`, `clear`, `about`
+- ✅ **Keyboard Driver** - Full keyboard input support with interrupts
+- ✅ **Command Shell** - Interactive console with history and scrolling
+- ✅ **Nova Language** - Integrated custom interpreter
 
 ### Building and Running
 
 **Requirements:**
 - NASM assembler
+- Zig compiler (latest)
 - QEMU emulator
 
 **Build:**
@@ -39,8 +42,9 @@ qemu-system-i386 -fda build\os-image.bin
 
 - `help` - Show available commands
 - `clear` - Clear screen
-- `about` - Show OS information
+- `about` - Show OS information (Version, Architecture)
 - `nova` - Start Nova Language Interpreter
+- `uptime` - Show system uptime in seconds
 - `reboot` - Reboot system
 - `shutdown` - Shutdown system
 - `ls`, `touch`, `rm`, `cat`, `echo` - RAM file system commands
@@ -67,27 +71,36 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 
 **Kernel:**
 - Written in x86 Assembly and Zig
+- Interrupt management (IDT & PIC remapping)
+- System timer (PIT) for precise delays
 - VGA text mode driver (0xb8000)
-- Keyboard driver (ports 0x60/0x64)
+- Keyboard driver (IRQ1 based)
 - Command shell with history
 - Integrated Nova Interpreter
 
 ### Roadmap
 
-#### Console version (v0.3)
-- [x] Kernel
-- [x] Basic commands
-- [x] Keyboard input
-- [x] Screen management
+#### Current progress (v0.4)
+- [x] IDT (Interrupt Descriptor Table)
+- [x] Timer (PIT) & Precise Sleep
+- [x] Command Uptime
+- [x] Keyboard Interrupts
+- [x] Basic commands & Screen management
 - [x] File system interaction (Mock/RAM)
 - [x] Nova Language
 - [x] System control (reboot/shutdown)
 
 #### Future improvements
-- [ ] IDT (Interrupt Descriptor Table)
-- [ ] Timer (PIT)
 - [ ] FAT12/FAT16 file system (Real disk support)
-- [ ] Multi-tasking
+- [ ] Heap Memory Allocator (kmalloc/kfree)
+- [ ] Paging & Virtual Memory Management
+- [ ] Multi-tasking (Kernel & User threads)
+- [ ] User Mode (Ring 3) & System Calls
+- [ ] Graphic mode support (VBE/LFB)
+- [ ] PS/2 Mouse Support
+- [ ] PCI Bus Enumeration
+- [ ] ATA/IDE Disk Driver
+- [ ] Simple Sound Driver (PC Speaker)
 
 ### Author
 

@@ -4,6 +4,7 @@
 const fs = @import("../fs.zig");
 const vga = @import("../drivers/vga.zig");
 const timer = @import("../drivers/timer.zig");
+const acpi = @import("../drivers/acpi.zig");
 
 
 // --- VGA Interface ---
@@ -71,16 +72,10 @@ pub fn reboot() noreturn {
     while(true) {}
 }
 
-/// Shutdown the virtual machine (works in QEMU and Bochs)
+/// Shutdown the system using ACPI
 pub fn shutdown() noreturn {
     printZ("Shutting down...\r\n");
-    // ACPI shutdown for QEMU
-    outw(0x604, 0x2000);
-    // Shutdown for Bochs/Older QEMU
-    outw(0xB004, 0x2000);
-    
-    printZ("Shutdown failed! (System halted.)\r\n");
-    while(true) asm volatile("hlt");
+    acpi.shutdown();
 }
 
 /// Precise sleep in milliseconds

@@ -9,6 +9,6 @@ const versioning = @import("versioning.zig");
 pub export fn print_welcome() void {
     common.printZ(
         "=== NewOS v" ++ versioning.NEWOS_VERSION ++ " 32-bit Console ===\r\n" ++
-        "Type \"help\" for commands\r\n\r\n"
+        "Type " ++ "\"" ++ "help" ++ "\"" ++ " for commands\r\n\r\n"
     );
 }
