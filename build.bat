@@ -54,12 +54,17 @@ if %errorlevel% neq 0 (
 
 :: Create final image
 echo Creating image...
-cmd /c "copy /b build\bootloader.bin + build\kernel32.bin build\os-image.bin"
-if %errorlevel% neq 0 (
-    echo Error creating image!
-    pause
-    exit /b 1
-)
+copy /b build\bootloader.bin + build\kernel32.bin build\os-image.bin > nul
+
+:: Pad image to 2880 sectors (1.44MB floppy)
+:: This ensures everything is loaded correctly by the BIOS
+echo Padding image...
+fsutil file createnew build\pad.bin 1474560 > nul
+copy /b build\os-image.bin + build\pad.bin build\temp.bin > nul
+fsutil file truncate build\temp.bin 1474560 > nul
+del build\os-image.bin
+ren build\temp.bin os-image.bin
+del build\pad.bin
 
 echo.
 echo Build successful!

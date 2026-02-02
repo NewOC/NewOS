@@ -102,7 +102,6 @@ export fn kmain() void {
     // Initialize ACPI (for proper shutdown)
     _ = acpi.init();
 
-
     // Main Shell loop
     while (true) {
         common.printZ("> ");

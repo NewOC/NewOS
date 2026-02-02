@@ -25,46 +25,21 @@ start:
     int 0x13
     
     ; 4. Load kernel from disk
-    ; We use segment:offset addressing for 0x10000
-    ; ES = 0x1000, BX = 0 -> linear address = 0x1000 * 16 + 0 = 0x10000
+    ; We load 60 sectors (about 30KB) starting from sector 2
     mov ax, 0x1000
     mov es, ax
     xor bx, bx
-    mov bp, 255             ; Number of sectors to read
     
-    mov dh, 0               ; Head
-    mov ch, 0               ; Cylinder
-    mov cl, 2               ; Sector (Kernel starts at sector 2)
-    
-read_loop:
-    mov ah, 0x02            ; BIOS Read sectors function
-    mov al, 1               ; Read 1 sector at a time
+    mov ah, 0x02            ; Read sectors
+    mov al, 60              ; Number of sectors to read
+    mov ch, 0               ; Cylinder 0
+    mov dh, 0               ; Head 0
+    mov cl, 2               ; Start from sector 2
     mov dl, [BOOT_DRIVE]
     int 0x13
     jc disk_error
     
-    ; Increment destination address (ES + 0x20 = +512 bytes)
-    mov ax, es
-    add ax, 0x0020
-    mov es, ax
-    
-    dec bp
-    jz read_done
-    
-    ; Increment sector index
-    inc cl
-    cmp cl, 19              ; Standard 1.44MB floppy has 18 sectors per track
-    jl read_loop
-    
-    ; Handle head/cylinder switching
-    mov cl, 1
-    inc dh
-    cmp dh, 2
-    jl read_loop
-    
-    mov dh, 0
-    inc ch
-    jmp read_loop
+    jmp read_done
     
 disk_error:
     ; Loop forever on error

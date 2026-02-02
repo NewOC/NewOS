@@ -104,41 +104,36 @@ fn save_to_history() void {
 
 /// Dispatch commands
 pub export fn execute_command() void {
-    if (cmd_len == 0) return;
+    //if (cmd_len == 0) return;
     const cmd = cmd_buffer[0..cmd_len];
 
     if (common.std_mem_eql(cmd, "help")) {
-        common.printZ(
-            "Commands:\r\n" ++
-            "  help           - Show help\r\n" ++
-            "  clear          - Clear screen\r\n" ++
-            "  about          - About OS\r\n" ++
-            "  nova           - Start Nova\r\n" ++
-            "  uptime         - Show system uptime\r\n" ++
-            "  reboot         - Reboot PC\r\n" ++
-            "  shutdown       - Shutdown PC\r\n" ++
-            "  ls             - List files\r\n" ++
-            "  touch <file>   - Create file\r\n" ++
-            "  rm <file>      - Delete file\r\n" ++
-            "  cat <file>     - Show contents\r\n" ++
-            "  echo <text>    - Print text\r\n"
-        );
+        common.printZ("Commands:\n");
+        common.printZ("  help           - Show help\n");
+        common.printZ("  clear          - Clear screen\n");
+        common.printZ("  about          - About OS\n");
+        common.printZ("  nova           - Start Nova\n");
+        common.printZ("  uptime         - Show system uptime\n");
+        common.printZ("  reboot         - Reboot PC\n");
+        common.printZ("  shutdown       - Shutdown PC\n");
+        common.printZ("  ls             - List files\n");
+        common.printZ("  touch <file>   - Create file\n");
+        common.printZ("  rm <file>      - Delete file\n");
+        common.printZ("  cat <file>     - Show contents\n");
+        common.printZ("  echo <text>    - Print text\n\n");
     } else if (common.std_mem_eql(cmd, "clear")) {
         vga.clear_screen();
         messages.print_welcome();
     } else if (common.std_mem_eql(cmd, "about")) {
-        common.printZ(
-            "NewOS v" ++ versioning.NEWOS_VERSION ++ "\r\n" ++
-            "32-bit Protected Mode OS\r\n" ++
-            "x86 + Zig kernel modules\r\n" ++
-            "=== By MinecAnton209 ===\r\n"
-        );
+        common.printZ("NewOS v" ++ versioning.NEWOS_VERSION ++ "\n");
+        common.printZ("32-bit Protected Mode OS\n");
+        common.printZ("x86 + Zig kernel modules\n");
+        common.printZ("=== By MinecAnton209 ===\n\n");
     } else if (common.std_mem_eql(cmd, "nova")) {
         nova.nova_start();
     } else if (common.std_mem_eql(cmd, "uptime")) {
         shell_cmds.cmd_uptime();
     } else if (common.std_mem_eql(cmd, "reboot")) {
-
         shell_cmds.cmd_reboot();
     } else if (common.std_mem_eql(cmd, "shutdown")) {
         shell_cmds.cmd_shutdown();
@@ -157,6 +152,17 @@ pub export fn execute_command() void {
         const text = cmd[5..];
         shell_cmds.cmd_echo(text.ptr, @intCast(text.len));
     } else {
-        common.printZ("Unknown command!\r\n");
+        common.printZ("Unknown: [");
+        common.printZ(cmd);
+        common.printZ("] (Len: ");
+        common.printNum(@intCast(cmd_len));
+        common.printZ(") Hex: ");
+        for (cmd) |c| {
+            const hex = "0123456789ABCDEF";
+            common.print_char(hex[c >> 4]);
+            common.print_char(hex[c & 0x0F]);
+            common.print_char(' ');
+        }
+        common.printZ("\n");
     }
 }
