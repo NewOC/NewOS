@@ -69,6 +69,16 @@ pub export fn cmd_mkfs_fat12(drive_num_ptr: [*]const u8, drive_num_len: u32) voi
     disk_cmds.mkfs_fat12(@intCast(drive_num));
 }
 
+/// Execute 'mkfs-fat16' command
+pub export fn cmd_mkfs_fat16(drive_num_ptr: [*]const u8, drive_num_len: u32) void {
+    if (drive_num_len == 0) {
+        common.printZ("Usage: mkfs-fat16 <drive_num>\n");
+        return;
+    }
+    const drive_num = drive_num_ptr[0] - '0';
+    disk_cmds.mkfs_fat16(@intCast(drive_num));
+}
+
 
 /// Global initialization for Zig-based modules (FS, etc.)
 pub export fn zig_init() void {

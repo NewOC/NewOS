@@ -119,6 +119,7 @@ pub export fn execute_command() void {
         common.printZ("  ls             - List files\n");
         common.printZ("  lsdsk          - List disks\n");
         common.printZ("  mkfs-fat12 <d> - Format disk with FAT12\n");
+        common.printZ("  mkfs-fat16 <d> - Format disk with FAT16\n");
         common.printZ("  touch <file>   - Create file\n");
         common.printZ("  rm <file>      - Delete file\n");
         common.printZ("  cat <file>     - Show contents\n");
@@ -146,6 +147,9 @@ pub export fn execute_command() void {
     } else if (common.startsWith(cmd, "mkfs-fat12 ")) {
         const arg = cmd[11..];
         shell_cmds.cmd_mkfs_fat12(arg.ptr, @intCast(arg.len));
+    } else if (common.startsWith(cmd, "mkfs-fat16 ")) {
+        const arg = cmd[11..];
+        shell_cmds.cmd_mkfs_fat16(arg.ptr, @intCast(arg.len));
     } else if (common.startsWith(cmd, "touch ")) {
         const filename = cmd[6..];
         shell_cmds.cmd_touch(filename.ptr, @intCast(filename.len));
