@@ -12,27 +12,42 @@ pub const KEY_UP = 0x80;
 pub const KEY_DOWN = 0x81;
 pub const KEY_LEFT = 0x82;
 pub const KEY_RIGHT = 0x83;
+pub const KEY_INSERT = 0x84;
+pub const KEY_HOME = 0x85;
+pub const KEY_END = 0x86;
+pub const KEY_DELETE = 0x87;
+pub const KEY_CAPS = 0x88;
+pub const KEY_NUM = 0x89;
+pub const KEY_F1 = 0x90;
+pub const KEY_F2 = 0x91;
+pub const KEY_F10 = 0x99;
+pub const KEY_PGUP = 0x8A;
+pub const KEY_PGDN = 0x8B;
+pub const KEY_ESC = 27;
 
 // Scancode tables
 const scancode = [_]u8{
-    0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8,
-    0, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 10,
-    0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
-    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,
-    0, 0, ' ',
-} ++ [_]u8{0} ** (128 - 57);
+    0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8,   // 0x00-0x0E
+    9, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 10,    // 0x0F-0x1C
+    0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',       // 0x1D-0x29 (0x1D is Ctrl)
+    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,         // 0x2A-0x36 (0x2A is LShift, 0x36 is RShift)
+    '*', 0, ' ',                                                         // 0x37-0x39 (0x37 is *, 0x38 is Alt)
+} ++ [_]u8{0} ** (128 - 58);
 
 const scancode_shift = [_]u8{
-    0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 8,
+    0, 27, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 8,
     0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 10,
     0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
     0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,
-    0, 0, ' ',
-} ++ [_]u8{0} ** (128 - 57);
+    '*', 0, ' ',
+} ++ [_]u8{0} ** (128 - 58);
 
-// Shift state
+// Keyboard state
 var shift_pressed: bool = false;
+var ctrl_pressed: bool = false;
 var extended_key: bool = false;
+var num_lock: bool = true; // Traditionally ON by default
+var caps_lock: bool = false;
 
 // I/O port functions
 fn inb(port: u16) u8 {
@@ -61,6 +76,16 @@ pub export fn isr_keyboard() void {
         shift_pressed = false;
         return;
     }
+
+    // Handle ctrl keys
+    if (scancode_byte == 0x1D) {
+        ctrl_pressed = true;
+        return;
+    }
+    if (scancode_byte == 0x9D) {
+        ctrl_pressed = false;
+        return;
+    }
     
     // Ignore key releases (high bit set)
     if ((scancode_byte & 0x80) != 0) {
@@ -77,14 +102,77 @@ pub export fn isr_keyboard() void {
             0x50 => KEY_DOWN,
             0x4B => KEY_LEFT,
             0x4D => KEY_RIGHT,
+            0x47 => KEY_HOME,
+            0x4F => KEY_END,
+            0x53 => KEY_DELETE,
+            0x52 => KEY_INSERT,
+            0x49 => KEY_PGUP,
+            0x51 => KEY_PGDN,
+            0x35 => '/', // Numpad / (extended)
             else => 0,
         };
     } else {
-        // Convert scancode to ASCII
-        ascii = if (shift_pressed)
-            scancode_shift[scancode_byte]
-        else
-            scancode[scancode_byte];
+        // Handle Caps Lock toggle (scancode 0x3A)
+        if (scancode_byte == 0x3A) {
+            caps_lock = !caps_lock;
+            ascii = KEY_CAPS;
+        } else if (scancode_byte == 0x45) {
+            // Handle Num Lock toggle (scancode 0x45)
+            num_lock = !num_lock;
+            ascii = KEY_NUM;
+        } else if (scancode_byte >= 0x47 and scancode_byte <= 0x53) {
+            // Handle Numpad codes (0x47 to 0x53)
+            if (num_lock) {
+                ascii = switch (scancode_byte) {
+                    0x47 => '7', 0x48 => '8', 0x49 => '9',
+                    0x4B => '4', 0x4C => '5', 0x4D => '6',
+                    0x4F => '1', 0x50 => '2', 0x51 => '3',
+                    0x52 => '0', 0x53 => '.',
+                    0x4A => '-', 0x4E => '+',
+                    else => 0,
+                };
+            } else {
+                ascii = switch (scancode_byte) {
+                    0x47 => KEY_HOME,
+                    0x48 => KEY_UP,
+                    0x4B => KEY_LEFT,
+                    0x4D => KEY_RIGHT,
+                    0x4F => KEY_END,
+                    0x50 => KEY_DOWN,
+                    0x49 => KEY_PGUP,
+                    0x51 => KEY_PGDN,
+                    0x52 => KEY_INSERT,
+                    0x53 => KEY_DELETE,
+                    0x4A => '-',
+                    0x4E => '+',
+                    else => 0,
+                };
+            }
+        } else if (scancode_byte >= 0x3B and scancode_byte <= 0x44) {
+            // Function keys F1-F10
+            ascii = KEY_F1 + (scancode_byte - 0x3B);
+        } else if (scancode_byte == 0x37) {
+            ascii = '*';
+        } else if (scancode_byte == 0x4A) {
+            ascii = '-';
+        } else if (scancode_byte == 0x4E) {
+            ascii = '+';
+        } else {
+            // Convert standard scancode to ASCII
+            ascii = if (shift_pressed)
+                scancode_shift[scancode_byte]
+            else
+                scancode[scancode_byte];
+
+            // Correct Caps Lock logic: it reverses the Shift state for letters
+            if (caps_lock) {
+                if (ascii >= 'a' and ascii <= 'z') {
+                    ascii -= 32;
+                } else if (ascii >= 'A' and ascii <= 'Z') {
+                    ascii += 32;
+                }
+            }
+        }
     }
     
     // Add to buffer if valid character
@@ -116,6 +204,10 @@ fn read_volatile(ptr: *const usize) usize {
 export fn keyboard_has_data() bool {
     return buffer_tail != read_volatile(&buffer_head);
 }
+
+pub export fn keyboard_get_caps_lock() bool { return caps_lock; }
+pub export fn keyboard_get_num_lock() bool { return num_lock; }
+pub export fn keyboard_get_ctrl() bool { return ctrl_pressed; }
 
 // Wait for character (blocking)
 pub export fn keyboard_wait_char() u8 {

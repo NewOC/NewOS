@@ -16,21 +16,23 @@ pub fn init() void {
     const divisor = PIT_FREQ / TARGET_FREQ;
 
     // Command byte: 
-    // Channel 0 (00), Access Mode: LSB/MSB (11), Mode 3: Square Wave (011), Binary (0)
-    // 00 11 011 0 = 0x36
-    outb(PIT_COMMAND, 0x36);
+    // Channel 0 (00), Access Mode: LSB/MSB (11), Mode 2: Rate Generator (010), Binary (0)
+    // 00 11 010 0 = 0x34
+    outb(PIT_COMMAND, 0x34);
     outb(PIT_CHANNEL0, @intCast(divisor & 0xFF));
     outb(PIT_CHANNEL0, @intCast((divisor >> 8) & 0xFF));
 }
 
 /// IRQ0 Timer Handler (called from ASM)
 pub export fn isr_timer() void {
-    ticks += 1;
+    const ptr = @as(*volatile usize, &ticks);
+    ptr.* += 1;
 }
 
 /// Get elapsed seconds since boot
 pub fn get_uptime() usize {
-    return ticks / 1000;
+    const ptr = @as(*volatile usize, &ticks);
+    return ptr.* / 1000;
 }
 
 /// Get elapsed ticks (ms) since boot
@@ -40,8 +42,9 @@ pub fn get_ticks() usize {
 
 /// Precise sleep for a number of milliseconds
 pub fn sleep(ms: usize) void {
-    const start_ticks = ticks;
-    while (ticks - start_ticks < ms) {
+    const ptr = @as(*volatile usize, &ticks);
+    const start_ticks = ptr.*;
+    while (ptr.* - start_ticks < ms) {
         // Wait for next interrupt
         asm volatile ("sti");
         asm volatile ("hlt");

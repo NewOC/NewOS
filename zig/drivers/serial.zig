@@ -8,6 +8,10 @@ pub export fn serial_print_char(c: u8) void {
     outb(PORT, c);
 }
 
+pub fn serial_print_str(str: []const u8) void {
+    for (str) |c| serial_print_char(c);
+}
+
 fn is_transmit_empty() bool {
     return (inb(PORT + 5) & 0x20) != 0;
 }

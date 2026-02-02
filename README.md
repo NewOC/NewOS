@@ -16,10 +16,12 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 - ✅ **32-bit Kernel** - Runs in x86 protected mode (Assembly + Zig)
 - ✅ **IDT Support** - Interrupt Descriptor Table with exception handling
 - ✅ **PIT Timer** - System timer (1kHz) for precise timing and uptime
-- ✅ **VGA Text Driver** - Screen output with automatic scrolling
-- ✅ **Keyboard Driver** - Full keyboard input support with interrupts
-- ✅ **Command Shell** - Interactive console with history and scrolling
-- ✅ **Nova Language** - Integrated custom interpreter
+- ✅ **RTC Driver** - Real-time clock support for date and time
+- ✅ **VGA Text Driver** - Screen output with automatic scrolling and history
+- ✅ **Keyboard Driver** - Full keyboard input support with interrupts (Shift, CAPS, NUM)
+- ✅ **Command Shell** - Interactive console with **Tab Autocomplete**, **Command History** (persisted to disk), and cycling matches
+- ✅ **FAT12/16 Support** - Native disk support for ATA drives
+- ✅ **Nova Language v0.5** - Integrated custom interpreter with history and autocomplete
 
 ### Building and Running
 
@@ -35,27 +37,35 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 
 **Run:**
 ```bash
-qemu-system-i386 -fda build\os-image.bin
+qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,file=disk.img
 ```
 
 ### Available Commands
 
-- `help` - Show available commands
-- `clear` - Clear screen
-- `about` - Show OS information (Version, Architecture)
-- `nova` - Start Nova Language Interpreter
-- `uptime` - Show system uptime in seconds
-- `reboot` - Reboot system
-- `shutdown` - Shutdown system
-- `ls`, `touch`, `rm`, `cat`, `echo` - RAM file system commands
+- `help`           - Show available commands (auto-synced)
+- `clear`          - Clear screen
+- `about`          - Show OS information (Version, Architecture)
+- `nova`           - Start Nova Language Interpreter
+- `uptime`         - Show system uptime and current RTC time
+- `time`           - Show current date and time
+- `reboot`         - Reboot system
+- `shutdown`       - Shutdown system (ACPI support)
+- `ls`, `lsdsk`    - List files and disks
+- `mount <d>`      - Select active disk (0/1 or ram)
+- `touch <file>`   - Create file on disk/RAM
+- `cat <file>`     - Show file contents
+- `edit <file>`    - Open built-in text editor
+- `rm <file>`      - Delete file
+- `history`        - Show command history
+- `mem`            - Test memory allocator
 
 ### Nova Language
-A custom interpreted language built into NewOS.
+A custom interpreted language built into NewOS. Now featuring **Command History** and **Tab Autocomplete**.
 
 **Features:**
-- Variables: `set string name = "Value";`, `set int age = 20;`
+- Variables: `set string name = "Value";`, `set int age = 10 + 20;`
 - Arithmetic: `+`, `-`, `*`, `/`, `()` (e.g. `print((10+2)*5);`)
-- System: `reboot();`, `shutdown();`
+- System: `reboot();`, `shutdown();`, `exit();`
 
 ### Architecture
 
@@ -64,7 +74,7 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 ```
 
 **Bootloader:**
-- Loads kernel from disk (50 sectors)
+- Loads kernel from disk
 - Sets up GDT (Global Descriptor Table)
 - Switches CPU to protected mode
 - Jumps to kernel
@@ -72,34 +82,34 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 **Kernel:**
 - Written in x86 Assembly and Zig
 - Interrupt management (IDT & PIC remapping)
-- System timer (PIT) for precise delays
+- System timer (PIT) and Real-Time Clock (RTC)
 - VGA text mode driver (0xb8000)
 - Keyboard driver (IRQ1 based)
-- Command shell with history
+- Command shell with persistent history and autocomplete
 - Integrated Nova Interpreter
 
 ### Roadmap
 
-#### Current progress (v0.4)
+#### Current progress (v0.8)
 - [x] IDT (Interrupt Descriptor Table)
 - [x] Timer (PIT) & Precise Sleep
-- [x] Command Uptime
-- [x] Keyboard Interrupts
-- [x] Basic commands & Screen management
-- [x] File system interaction (Mock/RAM)
-- [x] Nova Language
-- [x] System control (reboot/shutdown)
+- [x] RTC Driver (Date/Time)
+- [x] Keyboard Interrupts (Extended keys, Shift/Caps/Num)
+- [x] Command Shell with **Tab Autocomplete**
+- [x] Persistent command history on disk
+- [x] FAT12/FAT16 file system (Real disk support)
+- [x] Built-in Text Editor (`edit`)
+- [x] Dynamic Shell Commands table
+- [x] Nova Language v0.5 (History, Autocomplete)
 
 #### Future improvements
-- [ ] FAT12/FAT16 file system (Real disk support)
-- [ ] Heap Memory Allocator (kmalloc/kfree)
+- [ ] Heap Memory Allocator (kmalloc/kfree) - *In progress (v0.5)*
 - [ ] Paging & Virtual Memory Management
 - [ ] Multi-tasking (Kernel & User threads)
 - [ ] User Mode (Ring 3) & System Calls
 - [ ] Graphic mode support (VBE/LFB)
 - [ ] PS/2 Mouse Support
 - [ ] PCI Bus Enumeration
-- [ ] ATA/IDE Disk Driver
 - [ ] Simple Sound Driver (PC Speaker)
 
 ### Author

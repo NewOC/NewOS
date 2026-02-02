@@ -9,6 +9,29 @@ pub const DEFAULT_ATTR: u16 = 0x0f00;
 pub export var cursor_row: u8 = 0;
 pub export var cursor_col: u8 = 0;
 
+var screen_buffer: [MAX_COLS * MAX_ROWS]u16 = [_]u16{0} ** (MAX_COLS * MAX_ROWS);
+var saved_cursor_row: u8 = 0;
+var saved_cursor_col: u8 = 0;
+
+pub export fn save_screen_buffer() void {
+    var i: usize = 0;
+    while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
+        screen_buffer[i] = VIDEO_MEMORY[i];
+    }
+    saved_cursor_row = cursor_row;
+    saved_cursor_col = cursor_col;
+}
+
+pub export fn restore_screen_buffer() void {
+    var i: usize = 0;
+    while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
+        VIDEO_MEMORY[i] = screen_buffer[i];
+    }
+    cursor_row = saved_cursor_row;
+    cursor_col = saved_cursor_col;
+    update_hardware_cursor();
+}
+
 pub export fn clear_screen() void {
     var i: usize = 0;
     while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
@@ -18,6 +41,15 @@ pub export fn clear_screen() void {
     cursor_col = 0;
     update_hardware_cursor();
 }
+
+pub export fn zig_set_cursor(row: u8, col: u8) void {
+    cursor_row = row;
+    cursor_col = col;
+    update_hardware_cursor();
+}
+
+pub export fn zig_get_cursor_row() u8 { return cursor_row; }
+pub export fn zig_get_cursor_col() u8 { return cursor_col; }
 
 fn scroll() void {
     var i: usize = 0;

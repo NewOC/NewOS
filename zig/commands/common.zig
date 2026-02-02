@@ -9,7 +9,8 @@ const acpi = @import("../drivers/acpi.zig");
 
 const serial = @import("../drivers/serial.zig");
 
-// --- VGA Interface ---
+// --- Global State ---
+pub var selected_disk: i8 = -1; // -1 means RAM FS
 /// Low-level character output
 pub fn print_char(c: u8) void {
     vga.zig_print_char(c);
@@ -118,4 +119,105 @@ pub fn std_mem_eql(a: []const u8, b: []const u8) bool {
 pub fn startsWith(a: []const u8, b: []const u8) bool {
     if (a.len < b.len) return false;
     return std_mem_eql(a[0..b.len], b);
+}
+
+/// Simple indexOf for memory slices
+pub fn std_mem_indexOf(comptime T: type, slice: []const T, sub: []const T) ?usize {
+    if (sub.len == 0) return 0;
+    if (slice.len < sub.len) return null;
+    var i: usize = 0;
+    while (i <= slice.len - sub.len) : (i += 1) {
+        if (std_mem_eql(slice[i .. i + sub.len], sub)) return i;
+    }
+    return null;
+}
+
+/// Remove leading and trailing spaces
+pub fn trim(s: []const u8) []const u8 {
+    var start: usize = 0;
+    while (start < s.len and s[start] == ' ') : (start += 1) {}
+    var end: usize = s.len;
+    while (end > start and s[end - 1] == ' ') : (end -= 1) {}
+    return s[start..end];
+}
+
+pub fn asciiLower(c: u8) u8 {
+    if (c >= 'A' and c <= 'Z') return c + 32;
+    return c;
+}
+
+pub fn startsWithIgnoreCase(a: []const u8, b: []const u8) bool {
+    if (a.len < b.len) return false;
+    for (0..b.len) |i| {
+        if (asciiLower(a[i]) != asciiLower(b[i])) return false;
+    }
+    return true;
+}
+
+/// Format string to buffer. Supports {d} and {s}.
+pub fn fmt_to_buf(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+    var buf_idx: usize = 0;
+    comptime var fmt_idx: usize = 0;
+    comptime var arg_idx: usize = 0;
+
+    inline while (fmt_idx < fmt.len) {
+        if (buf_idx >= buf.len) break;
+
+        if (fmt_idx + 2 < fmt.len and fmt[fmt_idx] == '{') {
+            const spec = fmt[fmt_idx + 1];
+            if (fmt[fmt_idx + 2] == '}') {
+                if (spec == 'd') {
+                    buf_idx += fmtIntToBuf(buf[buf_idx..], args[arg_idx]);
+                    arg_idx += 1;
+                    fmt_idx += 3;
+                    continue;
+                } else if (spec == 's') {
+                    const str = args[arg_idx];
+                    for (str) |c| {
+                        if (buf_idx >= buf.len) break;
+                        buf[buf_idx] = c;
+                        buf_idx += 1;
+                    }
+                    arg_idx += 1;
+                    fmt_idx += 3;
+                    continue;
+                }
+            }
+        }
+        buf[buf_idx] = fmt[fmt_idx];
+        buf_idx += 1;
+        fmt_idx += 1;
+    }
+    return buf[0..buf_idx];
+}
+
+fn fmtIntToBuf(buf: []u8, n_in: anytype) usize {
+    var n: i32 = @intCast(n_in);
+    if (n == 0) {
+        if (buf.len > 0) { buf[0] = '0'; return 1; }
+        return 0;
+    }
+    
+    var len: usize = 0;
+    if (n < 0) {
+        if (buf.len > 0) { buf[0] = '-'; len = 1; }
+        n = -n;
+    }
+
+    var temp: [12]u8 = undefined;
+    var i: usize = 0;
+    var un: u32 = @intCast(n);
+    while (un > 0) {
+        temp[i] = @intCast((un % 10) + '0');
+        un /= 10;
+        i += 1;
+    }
+
+    var j: usize = 0;
+    while (j < i) : (j += 1) {
+        if (len + j < buf.len) {
+            buf[len + j] = temp[i - 1 - j];
+        }
+    }
+    return len + i;
 }
