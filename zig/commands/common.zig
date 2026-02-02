@@ -7,9 +7,14 @@ const timer = @import("../drivers/timer.zig");
 const acpi = @import("../drivers/acpi.zig");
 
 
+const serial = @import("../drivers/serial.zig");
+
 // --- VGA Interface ---
 /// Low-level character output
-pub const print_char = vga.zig_print_char;
+pub fn print_char(c: u8) void {
+    vga.zig_print_char(c);
+    serial.serial_print_char(c);
+}
 
 /// Print a string slice to the console
 pub fn printZ(str: []const u8) void {
