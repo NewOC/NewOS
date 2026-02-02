@@ -203,7 +203,7 @@ fn save_history_to_disk() void {
             offset += 1;
         }
         
-        _ = fat.write_file(drive, bpb, "history.txt", join_buf[0..offset]);
+        _ = fat.write_file(drive, bpb, ".history", join_buf[0..offset]);
     }
 }
 
@@ -213,7 +213,7 @@ fn load_history_from_disk() void {
 
     if (fat.read_bpb(drive)) |bpb| {
         var load_buf: [HISTORY_SIZE * 1024]u8 = [_]u8{0} ** (HISTORY_SIZE * 1024);
-        const read = fat.read_file(drive, bpb, "history.txt", &load_buf);
+        const read = fat.read_file(drive, bpb, ".history", &load_buf);
         if (read <= 0) return;
 
         history_count = 0;
