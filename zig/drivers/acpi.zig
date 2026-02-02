@@ -54,9 +54,9 @@ pub fn init() bool {
             slp_typa = 5 << 10;
             slp_typb = 5 << 10;
             
-            common.printZ("ACPI: Power Management initialized (Port: ");
-            common.printNum(@intCast(pm1a_control_block));
-            common.printZ(")\n");
+            //common.printZ("ACPI: Power Management initialized (Port: ");
+            //common.printNum(@intCast(pm1a_control_block));
+            //common.printZ(")\n");
             return true;
         }
     }
