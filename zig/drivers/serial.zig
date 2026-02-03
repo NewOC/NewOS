@@ -33,6 +33,18 @@ pub fn serial_clear_screen() void {
     serial_print_str("\x1B[2J\x1B[H");
 }
 
+pub fn serial_clear_line() void {
+    serial_print_str("\x1B[K");
+}
+
+pub fn serial_hide_cursor() void {
+    serial_print_str("\x1B[?25l");
+}
+
+pub fn serial_show_cursor() void {
+    serial_print_str("\x1B[?25h");
+}
+
 pub fn serial_set_cursor(row: u8, col: u8) void {
     var buf: [32]u8 = undefined;
     const str = common.fmt_to_buf(&buf, "\x1B[{d};{d}H", .{ @as(u32, row) + 1, @as(u32, col) + 1 });

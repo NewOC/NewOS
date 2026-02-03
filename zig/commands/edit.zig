@@ -49,8 +49,24 @@ pub fn execute(name: []const u8) void {
     vga.save_screen_buffer();
     vga.clear_screen();
     serial.serial_clear_screen();
+
+    var last_cursor_pos: usize = 9999;
+    var last_buf_len: usize = 9999;
+    var last_viewport_top: usize = 9999;
+
     while (true) {
-        draw_ui();
+        const needs_redraw = (cursor_pos != last_cursor_pos or buf_len != last_buf_len or viewport_top != last_viewport_top);
+        if (needs_redraw) {
+            serial.serial_hide_cursor();
+            draw_ui();
+            last_cursor_pos = cursor_pos;
+            last_buf_len = buf_len;
+            last_viewport_top = viewport_top;
+            serial.serial_show_cursor();
+        } else {
+            vga.update_hardware_cursor();
+        }
+
         const char = keyboard.keyboard_wait_char();
         const ctrl = keyboard.keyboard_get_ctrl();
 
@@ -201,6 +217,9 @@ fn draw_content() void {
     serial.serial_set_color(7); // White fg
 
     var last_draw_r: usize = 999;
+    i = 0;
+    r = 1;
+    c = 0;
     while (i <= buf_len) : (i += 1) {
         const cur_screen_row = r - 1;
         if (cur_screen_row >= viewport_top and cur_screen_row < viewport_top + ROWS) {
@@ -211,6 +230,7 @@ fn draw_content() void {
                 // Serial draw optimization: only set cursor if we moved to a new line
                 if (draw_r != last_draw_r) {
                     serial.serial_set_cursor(@intCast(draw_r), @intCast(c));
+                    serial.serial_clear_line();
                     last_draw_r = draw_r;
                 }
                 serial.serial_print_char(buffer[i]);

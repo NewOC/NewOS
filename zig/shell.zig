@@ -330,13 +330,14 @@ fn refresh_line() void {
     }
     
     // 2. Serial Update
-    // Move to prompt start and clear following text to avoid overlaps
+    serial.serial_hide_cursor();
     serial.serial_set_cursor(prompt_row, prompt_col);
-    serial.serial_print_str("\x1B[J"); // Clear from cursor to end of screen
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
+    serial.serial_clear_line();
 
     cmd_pos = saved_pos;
     move_screen_cursor();
+    serial.serial_show_cursor();
     
     // Update status indicator in top-right corner
     vga.VIDEO_MEMORY[80 - 14] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'C';

@@ -537,12 +537,14 @@ fn refreshLine() void {
     if (row_after < row_before and prompt_row > 0) prompt_row -= 1;
     
     // Serial Update
+    serial.serial_hide_cursor();
     serial.serial_set_cursor(prompt_row, prompt_col);
-    serial.serial_print_str("\x1B[J");
     serial.serial_print_str(buffer[0..buf_len]);
+    serial.serial_clear_line();
 
     buf_pos = saved_pos;
     moveScreenCursor();
+    serial.serial_show_cursor();
 
     // Update status indicators
     vga.VIDEO_MEMORY[80 - 14] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'C';
