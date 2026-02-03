@@ -17,7 +17,8 @@
 | Command | Description | Usage |
 |---------|-------------|-------|
 | `ls` | List files and folders | `ls [path]` |
-| `cd` | Change current directory | `cd <dir\|..\|/>` |
+| `pwd` | Print working directory | `pwd` |
+| `cd` | Change current directory | `cd <path>` |
 | `lsdsk` | List disks and partitions | `lsdsk` |
 | `mount` | Change active drive | `mount <0/1>` |
 | `mkdir` | Create new directory | `mkdir <name>` |
@@ -52,4 +53,4 @@
 | `mkfs` | Create FAT filesystem | `mkfs [type]` |
 
 ---
-*Note: All file system commands support nested paths (e.g., `ls 123/`, `touch data/test.txt`).*
+*Note: All file system commands support hierarchical paths (absolute and relative), `.` (current), `..` (parent) navigation, and quoted strings for names with spaces (e.g., `cd "New Folder"`).*
