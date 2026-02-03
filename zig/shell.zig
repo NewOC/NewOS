@@ -330,13 +330,10 @@ fn refresh_line() void {
     }
     
     // 2. Serial Update
-    // We rely on move_screen_cursor() below to sync the serial cursor,
-    // but we still need to draw the line if it changed.
-    // For simple single-line terminals, we use the \r trick.
-    serial.serial_print_char('\r');
-    display_prompt_serial();
+    // Move to prompt start and clear following text to avoid overlaps
+    serial.serial_set_cursor(prompt_row, prompt_col);
+    serial.serial_print_str("\x1B[J"); // Clear from cursor to end of screen
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
-    serial.serial_print_str("   "); 
 
     cmd_pos = saved_pos;
     move_screen_cursor();
