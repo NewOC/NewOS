@@ -145,6 +145,15 @@ pub fn std_mem_eql(a: []const u8, b: []const u8) bool {
     return true;
 }
 
+pub fn endsWithIgnoreCase(a: []const u8, b: []const u8) bool {
+    if (a.len < b.len) return false;
+    const start = a.len - b.len;
+    for (0..b.len) |i| {
+        if (asciiLower(a[start + i]) != asciiLower(b[i])) return false;
+    }
+    return true;
+}
+
 /// Check if string starts with prefix
 pub fn startsWith(a: []const u8, b: []const u8) bool {
     if (a.len < b.len) return false;
@@ -187,6 +196,32 @@ pub fn startsWithIgnoreCase(a: []const u8, b: []const u8) bool {
 pub fn copy(dest: []u8, src: []const u8) void {
     const len = @min(dest.len, src.len);
     for (0..len) |i| dest[i] = src[i];
+}
+
+/// Parse command line arguments with support for quoted strings
+pub fn parseArgs(input: []const u8, argv: *[8][]const u8) usize {
+    var count: usize = 0;
+    var i: usize = 0;
+    while (i < input.len and count < 8) {
+        // Skip leading spaces
+        while (i < input.len and input[i] == ' ') : (i += 1) {}
+        if (i >= input.len) break;
+
+        if (input[i] == '"') {
+            i += 1; // Skip opening quote
+            const start = i;
+            while (i < input.len and input[i] != '"') : (i += 1) {}
+            argv[count] = input[start..i];
+            count += 1;
+            if (i < input.len) i += 1; // Skip closing quote
+        } else {
+            const start = i;
+            while (i < input.len and input[i] != ' ') : (i += 1) {}
+            argv[count] = input[start..i];
+            count += 1;
+        }
+    }
+    return count;
 }
 
 /// Format string to buffer. Supports {d} and {s}.

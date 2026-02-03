@@ -50,6 +50,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "mkdir", .help = "mkdir <name> - Create a new directory", .handler = cmd_handler_mkdir },
     .{ .name = "md", .help = "Alias for mkdir", .handler = cmd_handler_mkdir },
     .{ .name = "cd", .help = "cd <dir|..|/> - Change directory", .handler = cmd_handler_cd },
+    .{ .name = "pwd", .help = "Print current working directory", .handler = cmd_handler_pwd },
     .{ .name = "tree", .help = "Display recursive directory structure", .handler = cmd_handler_tree },
     .{ .name = "mkfs-fat12", .help = "Format drive as FAT12 (legacy)", .handler = cmd_handler_mkfs12 },
     .{ .name = "mkfs-fat16", .help = "Format drive as FAT16 (standard)", .handler = cmd_handler_mkfs16 },
@@ -783,109 +784,80 @@ pub fn shell_execute_literal(cmd: []const u8) void {
     const cmd_raw = common.trim(cmd);
     if (cmd_raw.len == 0) return;
 
-    // Find the end of command name
-    var i: usize = 0;
-    while (i < cmd_raw.len and cmd_raw[i] != ' ') : (i += 1) {}
-    const cmd_name = cmd_raw[0..i];
-    
-    // Skip spaces to find start of args
-    while (i < cmd_raw.len and cmd_raw[i] == ' ') : (i += 1) {}
-    const args_only = cmd_raw[i..];
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(cmd_raw, &argv);
+    if (argc == 0) return;
 
+    const cmd_name = argv[0];
+
+    // 1. Built-in Shell Commands
     for (SHELL_COMMANDS) |sc| {
         if (common.std_mem_eql(sc.name, cmd_name)) {
-            // Special case: help needs full command for pagination logic 
-            // OR we fix help to use args_only. Let's fix help.
+            // Reconstruct args string for legacy handlers
+            var i: usize = 0;
+            while (i < cmd_raw.len and cmd_raw[i] != ' ') : (i += 1) {}
+            while (i < cmd_raw.len and cmd_raw[i] == ' ') : (i += 1) {}
+            const args_only = cmd_raw[i..];
+
             sc.handler(args_only);
             return;
         }
     }
 
-    // Check Built-in Nova Scripts
-    for (BUILTIN_SCRIPTS) |script| {
-        if (common.std_mem_eql(script.name, cmd_name)) {
-            // Parse arguments for the script
-            var s_args: [8][]const u8 = undefined;
-            var s_argc: usize = 0;
-            
-            var n: usize = 0;
-            var in_arg = false;
-            var arg_start: usize = 0;
-            
-            for (args_only, 0..) |c, k| {
-                if (c == ' ') {
-                    if (in_arg) {
-                        if (s_argc < 8) {
-                            s_args[s_argc] = args_only[arg_start..k];
-                            s_argc += 1;
+    // 2. Relative/Absolute Path Scripts (containing /)
+    var contains_slash = false;
+    for (cmd_name) |c| {
+        if (c == '/' or c == '\\') {
+            contains_slash = true;
+            break;
+        }
+    }
+
+    if (contains_slash) {
+        if (common.endsWithIgnoreCase(cmd_name, ".nv")) {
+            if (common.selected_disk >= 0) {
+                const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+                if (fat.read_bpb(drive)) |bpb| {
+                    if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], cmd_name)) |res| {
+                        if (!res.is_dir) {
+                            nova_commands.setScriptArgs(argv[1..argc]);
+                            nova_interpreter.runScript(res.path[0..res.path_len]);
+                            return;
                         }
-                        in_arg = false;
-                    }
-                } else {
-                    if (!in_arg) {
-                        arg_start = k;
-                        in_arg = true;
                     }
                 }
-                n = k;
             }
-            if (in_arg and s_argc < 8) {
-                s_args[s_argc] = args_only[arg_start..n+1];
-                s_argc += 1;
-            }
-            
-            nova_commands.setScriptArgs(s_args[0..s_argc]);
+        } else {
+            common.printZ("shell: Direct path execution requires .nv extension\n");
+            return;
+        }
+    }
+
+    // 3. Built-in Nova Scripts
+    for (BUILTIN_SCRIPTS) |script| {
+        if (common.std_mem_eql(script.name, cmd_name)) {
+            nova_commands.setScriptArgs(argv[1..argc]);
             nova_interpreter.runScriptSource(script.source);
             return;
         }
     }
 
-    // Check External Scripts in .SYSTEM/CMDS/
+    // 4. System Path Scripts (/.SYSTEM/CMDS/<cmd_name>.nv)
     if (common.selected_disk >= 0) {
-        // Construct path: /.SYSTEM/CMDS/<cmd_name>.nv
-        var path_buf: [64]u8 = [_]u8{0} ** 64;
+        var path_buf: [128]u8 = [_]u8{0} ** 128;
         const prefix = "/.SYSTEM/CMDS/";
         const extension = ".nv";
         
-        if (prefix.len + cmd_name.len + extension.len < 64) {
+        if (prefix.len + cmd_name.len + extension.len < 128) {
             common.copy(path_buf[0..], prefix);
             common.copy(path_buf[prefix.len..], cmd_name);
             common.copy(path_buf[prefix.len + cmd_name.len..], extension);
             const full_path = path_buf[0 .. prefix.len + cmd_name.len + extension.len];
 
-            // Check if file exists
             const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
             if (fat.read_bpb(drive)) |bpb| {
                 if (fat.find_entry(drive, bpb, 0, full_path)) |_| {
-                     // Parse arguments for the script
-                    var s_args: [8][]const u8 = undefined;
-                    var s_argc: usize = 0;
-                    var n: usize = 0;
-                    var in_arg = false;
-                    var arg_start: usize = 0;
-                    for (args_only, 0..) |c, k| {
-                        if (c == ' ') {
-                            if (in_arg) {
-                                if (s_argc < 8) {
-                                    s_args[s_argc] = args_only[arg_start..k];
-                                    s_argc += 1;
-                                }
-                                in_arg = false;
-                            }
-                        } else {
-                            if (!in_arg) {
-                                arg_start = k;
-                                in_arg = true;
-                            }
-                        }
-                        n = k;
-                    }
-                    if (in_arg and s_argc < 8) {
-                        s_args[s_argc] = args_only[arg_start..n+1];
-                        s_argc += 1;
-                    }
-                    nova_commands.setScriptArgs(s_args[0..s_argc]);
-                    
+                    nova_commands.setScriptArgs(argv[1..argc]);
                     nova_interpreter.runScript(full_path);
                     return;
                 }
@@ -893,7 +865,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
         }
     }
     
-    common.printZ("Unknown command: ");
+    common.printZ("shell: command not found: ");
     common.printZ(cmd_name);
     common.printZ("\n");
 }
@@ -1268,6 +1240,10 @@ fn cmd_handler_cd(args: []const u8) void {
         // cd with no args goes to root
         shell_cmds.cmd_cd("/".ptr, 1); 
     }
+}
+
+fn cmd_handler_pwd(_: []const u8) void {
+    shell_cmds.cmd_pwd();
 }
 
 fn cmd_handler_tree(_: []const u8) void {

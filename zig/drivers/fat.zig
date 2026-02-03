@@ -349,6 +349,85 @@ pub const PathResolution = struct {
     file_name: []const u8,
 };
 
+pub const ResolvedPath = struct {
+    cluster: u32,
+    is_dir: bool,
+    path: [256]u8,
+    path_len: usize,
+};
+
+pub fn resolve_full_path(drive: ata.Drive, bpb: BPB, start_cluster: u32, start_path: []const u8, input_path: []const u8) ?ResolvedPath {
+    var res: ResolvedPath = undefined;
+    res.cluster = start_cluster;
+    res.is_dir = true;
+    res.path_len = 0;
+
+    var input = input_path;
+    if (input.len > 0 and (input[0] == '/' or input[0] == '\\')) {
+        res.cluster = 0;
+        input = input[1..];
+    } else {
+        // Copy start_path to res.path
+        for (start_path, 0..) |c, i| {
+            if (i >= 256) break;
+            res.path[i] = c;
+        }
+        res.path_len = @min(start_path.len, 256);
+    }
+
+    var i: usize = 0;
+    while (i < input.len) {
+        // Skip separators
+        while (i < input.len and (input[i] == '/' or input[i] == '\\')) : (i += 1) {}
+        if (i >= input.len) break;
+
+        const start = i;
+        while (i < input.len and input[i] != '/' and input[i] != '\\') : (i += 1) {}
+        const component = input[start..i];
+
+        if (common.std_mem_eql(component, ".")) {
+            continue;
+        } else if (common.std_mem_eql(component, "..")) {
+            if (res.cluster != 0) {
+                const entry = find_entry_literal(drive, bpb, res.cluster, "..") orelse return null;
+                res.cluster = entry.first_cluster_low;
+                // Pop last component from res.path
+                if (res.path_len > 0) {
+                    var p = res.path_len - 1;
+                    while (p > 0 and res.path[p] != '/') : (p -= 1) {}
+                    res.path_len = p;
+                }
+            }
+        } else {
+            if (!res.is_dir) return null; // Can't go deeper into a file
+
+            const entry = find_entry_literal(drive, bpb, res.cluster, component) orelse return null;
+            res.cluster = entry.first_cluster_low;
+            res.is_dir = (entry.attr & 0x10) != 0;
+
+            // Append component to res.path
+            const name_info = get_name_from_raw(entry.name[0..8]); // This is not quite right for LFN, but find_entry_literal uses the real name.
+            // Wait, I should use the component name as it was matched, but normalized.
+            // Actually, it's better to use the canonical name from the directory entry if possible.
+            // But for now, let's use the component as provided or matched.
+
+            // Let's just use component for now to keep it simple.
+            if (res.path_len + 1 + component.len < 256) {
+                res.path[res.path_len] = '/';
+                res.path_len += 1;
+                for (component, 0..) |c, k| {
+                    res.path[res.path_len + k] = c;
+                }
+                res.path_len += component.len;
+            } else {
+                return null; // Path too long
+            }
+        }
+    }
+
+    return res;
+}
+
 pub fn resolve_path(drive: ata.Drive, bpb: BPB, start_dir: u32, path: []const u8) ?PathResolution {
     if (path.len == 0) return null;
 
