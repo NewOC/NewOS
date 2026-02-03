@@ -987,17 +987,28 @@ fn cmd_handler_touch(args: []const u8) void {
 }
 
 fn cmd_handler_write(args: []const u8) void {
-    if (args.len > 0) {
-        if (common.std_mem_indexOf(u8, args, " ")) |space| {
-            const name = args[0..space];
-            const data = args[space + 1 ..];
-            shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len));
-        } else {
-            common.printZ("Usage: write <file> <text>\n");
-        }
-    } else {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args, &argv);
+    if (argc < 2) {
         common.printZ("Usage: write <file> <text>\n");
+        return;
     }
+    const name = argv[0];
+
+    // Find the start of the second argument in the raw string to get everything else as data
+    var i: usize = 0;
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+    if (i < args.len and args[i] == '"') {
+        i += 1;
+        while (i < args.len and args[i] != '"') : (i += 1) {}
+        if (i < args.len) i += 1;
+    } else {
+        while (i < args.len and args[i] != ' ') : (i += 1) {}
+    }
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+
+    const data = args[i..];
+    shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len));
 }
 
 fn cmd_handler_rm(args: []const u8) void {

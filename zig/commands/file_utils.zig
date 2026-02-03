@@ -4,36 +4,15 @@ const fat = @import("../drivers/fat.zig");
 const ata = @import("../drivers/ata.zig");
 const memory = @import("../memory.zig");
 
-// Helper to parse arguments
-fn get_arg(args: []const u8, index: usize) ?[]const u8 {
-    var i: usize = 0;
-    var arg_idx: usize = 0;
-    var start: usize = 0;
-    
-    // Skip leading spaces
-    while (i < args.len and args[i] == ' ') : (i += 1) {}
-    
-    while (i < args.len) {
-        start = i;
-        while (i < args.len and args[i] != ' ') : (i += 1) {}
-        
-        if (arg_idx == index) return args[start..i];
-        
-        arg_idx += 1;
-        while (i < args.len and args[i] == ' ') : (i += 1) {}
-    }
-    return null;
-}
-
 pub fn cmd_cp(args: []const u8) void {
-    const src = get_arg(args, 0) orelse {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args, &argv);
+    if (argc < 2) {
         common.printZ("Usage: cp <source> <dest>\n");
         return;
-    };
-    const dest = get_arg(args, 1) orelse {
-        common.printZ("Usage: cp <source> <dest>\n");
-        return;
-    };
+    }
+    const src = argv[0];
+    const dest = argv[1];
     
     // 1. Initialize FS
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
@@ -70,14 +49,14 @@ pub fn cmd_mv(args: []const u8) void {
 }
 
 pub fn cmd_rename(args: []const u8) void {
-    const src = get_arg(args, 0) orelse {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args, &argv);
+    if (argc < 2) {
         common.printZ("Usage: rename <old> <new>\n");
         return;
-    };
-    const dest = get_arg(args, 1) orelse {
-        common.printZ("Usage: rename <old> <new>\n");
-        return;
-    };
+    }
+    const src = argv[0];
+    const dest = argv[1];
 
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     const bpb = fat.read_bpb(drive) orelse {
@@ -118,9 +97,10 @@ pub fn cmd_format(args: []const u8) void {
     var drive_idx: i32 = -1;
     var force = false;
 
-    // Manual arg parsing since we don't have an iterator
-    var arg_idx: usize = 0;
-    while (get_arg(args, arg_idx)) |arg| : (arg_idx += 1) {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args, &argv);
+
+    for (argv[0..argc]) |arg| {
         if (common.std_mem_eql(arg, "--force")) {
             force = true;
         } else if (arg.len == 1 and arg[0] >= '0' and arg[0] <= '9') {

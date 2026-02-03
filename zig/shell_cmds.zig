@@ -110,12 +110,20 @@ pub export fn cmd_ls(args_ptr: [*]const u8, args_len: u32) void {
 
 /// Execute 'cat' command for a given filename
 pub export fn cmd_cat(name_ptr: [*]const u8, name_len: u32) void {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: cat <file>\n");
+        return;
+    }
+    const name = argv[0];
+
     if (common.selected_disk < 0) {
-        cat.execute(name_ptr, @intCast(name_len));
+        cat.execute(name.ptr, @intCast(name.len));
     } else {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            if (!fat.stream_to_console(drive, bpb, common.current_dir_cluster, name_ptr[0..name_len])) {
+            if (!fat.stream_to_console(drive, bpb, common.current_dir_cluster, name)) {
                 common.printZ("Error: File not found\n");
             }
         }
@@ -124,12 +132,20 @@ pub export fn cmd_cat(name_ptr: [*]const u8, name_len: u32) void {
 
 /// Execute 'touch' command to create a file
 pub export fn cmd_touch(name_ptr: [*]const u8, name_len: u32) void {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: touch <file>\n");
+        return;
+    }
+    const name = argv[0];
+
     if (common.selected_disk < 0) {
-        touch.execute(name_ptr, @intCast(name_len));
+        touch.execute(name.ptr, @intCast(name.len));
     } else {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            if (!fat.write_file(drive, bpb, common.current_dir_cluster, name_ptr[0..name_len], "")) {
+            if (!fat.write_file(drive, bpb, common.current_dir_cluster, name, "")) {
                 common.printZ("Error: Failed to create file on disk\n");
             }
         } else {
@@ -146,8 +162,10 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
     }
 
     const args_raw = args_ptr[0..args_len];
-    const args = common.trim(args_raw);
-    if (args.len == 0) {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args_raw, &argv);
+
+    if (argc == 0) {
         common.printZ("Usage: rm [-d] [-r] <file|*>\n");
         return;
     }
@@ -157,17 +175,7 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
     var sure = false;
     var target: []const u8 = "";
 
-    // Basic space-based split for flags
-    var i: usize = 0;
-    while (i < args.len) {
-        // Skip spaces
-        while (i < args.len and args[i] == ' ') : (i += 1) {}
-        if (i >= args.len) break;
-        
-        const start = i;
-        while (i < args.len and args[i] != ' ') : (i += 1) {}
-        const arg = args[start..i];
-
+    for (argv[0..argc]) |arg| {
         if (common.std_mem_eql(arg, "-r")) {
             recursive = true;
         } else if (common.std_mem_eql(arg, "-d")) {
@@ -503,7 +511,13 @@ pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const
 }
 
 pub export fn cmd_edit(name_ptr: [*]const u8, name_len: u32) void {
-    edit.execute(name_ptr[0..name_len]);
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: edit <file>\n");
+        return;
+    }
+    edit.execute(argv[0]);
 }
 
 pub export fn cmd_sysinfo() void {
