@@ -801,12 +801,42 @@ pub export fn execute_command() void {
 }
 
 pub fn shell_execute_literal(cmd: []const u8) void {
-    const cmd_raw = common.trim(cmd);
+    var cmd_raw = common.trim(cmd);
     if (cmd_raw.len == 0) return;
+
+    // Output redirection support: cmd > file
+    var redirect_file: ?[]const u8 = null;
+    if (common.std_mem_indexOf(u8, cmd_raw, ">")) |idx| {
+        const file_part = common.trim(cmd_raw[idx + 1 ..]);
+        if (file_part.len > 0) {
+            redirect_file = file_part;
+            cmd_raw = common.trim(cmd_raw[0..idx]);
+        }
+    }
 
     var argv: [8][]const u8 = undefined;
     const argc = common.parseArgs(cmd_raw, &argv);
     if (argc == 0) return;
+
+    if (redirect_file != null) {
+        if (common.selected_disk < 0) {
+            common.printZ("Error: Redirection requires a mounted disk\n");
+            return;
+        }
+        common.redirect_active = true;
+        common.redirect_pos = 0;
+    }
+
+    defer {
+        if (redirect_file) |file| {
+            common.redirect_active = false;
+            const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+            if (fat.read_bpb(drive)) |bpb| {
+                _ = fat.write_file(drive, bpb, common.current_dir_cluster, file, common.redirect_buffer[0..common.redirect_pos]);
+            }
+            common.redirect_pos = 0;
+        }
+    }
 
     const cmd_name = argv[0];
 

@@ -15,8 +15,19 @@ pub var current_dir_cluster: u32 = 0; // 0 = Root on FAT12/16
 pub var current_path: [256]u8 = [_]u8{0} ** 256;
 pub var current_path_len: usize = 0;
 
+pub var redirect_active: bool = false;
+pub var redirect_buffer: [32768]u8 = undefined;
+pub var redirect_pos: usize = 0;
+
 /// Low-level character output
 pub fn print_char(c: u8) void {
+    if (redirect_active) {
+        if (redirect_pos < redirect_buffer.len) {
+            redirect_buffer[redirect_pos] = c;
+            redirect_pos += 1;
+        }
+        return;
+    }
     vga.zig_print_char(c);
     serial.serial_print_char(c);
 }
