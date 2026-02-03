@@ -50,9 +50,9 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "mem", .help = "Show memory allocator & heap status", .handler = cmd_handler_mem },
     .{ .name = "sysinfo", .help = "Display system hardware info", .handler = cmd_handler_sysinfo },
     .{ .name = "docs", .help = "Show internal documentation topics", .handler = cmd_handler_docs },
-    .{ .name = "cp", .help = "cp <src> <dest> - Copy a file", .handler = cmd_handler_cp },
-    .{ .name = "mv", .help = "mv <src> <dest> - Move or rename file", .handler = cmd_handler_mv },
-    .{ .name = "ren", .help = "Alias for mv (rename)", .handler = cmd_handler_rename },
+    .{ .name = "cp", .help = "cp <src> <dest> - Copy file/folder recursively", .handler = cmd_handler_cp },
+    .{ .name = "mv", .help = "mv <src> <dest> - Move or rename file/folder", .handler = cmd_handler_mv },
+    .{ .name = "ren", .help = "Alias for mv (rename file/folder)", .handler = cmd_handler_rename },
     .{ .name = "format", .help = "Low-level drive formatting tool", .handler = cmd_handler_format },
     .{ .name = "mkfs", .help = "Create filesystem on current drive", .handler = cmd_handler_mkfs },
 };
@@ -544,7 +544,11 @@ fn autocomplete() void {
 
 /// Dispatch commands
 pub export fn execute_command() void {
-    const cmd_raw = common.trim(cmd_buffer[0..cmd_len]);
+    shell_execute_literal(cmd_buffer[0..cmd_len]);
+}
+
+pub fn shell_execute_literal(cmd: []const u8) void {
+    const cmd_raw = common.trim(cmd);
     if (cmd_raw.len == 0) return;
 
     // Find the end of command name
@@ -626,8 +630,8 @@ fn cmd_handler_about(_: []const u8) void {
     common.printZ("=== By MinecAnton209 ===\n\n");
 }
 
-fn cmd_handler_nova(_: []const u8) void {
-    nova.nova_start();
+fn cmd_handler_nova(args: []const u8) void {
+    nova.nova_start(args.ptr, args.len);
 }
 
 fn cmd_handler_uptime(_: []const u8) void {

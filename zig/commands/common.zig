@@ -109,6 +109,32 @@ pub fn sleep(ms: usize) void {
     timer.sleep(ms);
 }
 
+var rnd_state: u32 = 0xACE1;
+pub fn seed_random_with_tsc() void {
+    var low: u32 = undefined;
+    var high: u32 = undefined;
+    asm volatile (
+        "rdtsc"
+        : [low] "={eax}" (low),
+          [high] "={edx}" (high),
+    );
+    rnd_state = low ^ high;
+    if (rnd_state == 0) rnd_state = 0xACE1;
+}
+
+pub fn get_random(min_v: i32, max_v: i32) i32 {
+    if (max_v <= min_v) return min_v;
+    // Xorshift PRNG
+    rnd_state ^= rnd_state << 13;
+    rnd_state ^= rnd_state >> 17;
+    rnd_state ^= rnd_state << 5;
+    const range = @as(u32, @intCast(max_v - min_v + 1));
+    return @as(i32, @intCast(@mod(rnd_state, range))) + min_v;
+}
+
+pub fn math_abs(n: i32) i32 { return if (n < 0) -n else n; }
+pub fn math_max(a: i32, b: i32) i32 { return if (a > b) a else b; }
+pub fn math_min(a: i32, b: i32) i32 { return if (a < b) a else b; }
 
 /// Check if two memory slices are equal
 pub fn std_mem_eql(a: []const u8, b: []const u8) bool {

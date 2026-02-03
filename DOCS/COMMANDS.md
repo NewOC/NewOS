@@ -17,8 +17,8 @@ Comprehensive documentation for all built-in NewOS shell commands.
 | `write` | Write text to file | `write <path> <text>` |
 | `cat` | View file content | `cat <path>` |
 | `rm` | Delete file/dir | `rm [-d] [-r] <f|*>` |
-| `cp` | Copy file | `cp <src> <dest>` |
-| `mv` | Move/Rename | `mv <src> <dest>` |
+| `cp` | Copy file/folder | `cp <src> <dest>` |
+| `mv` | Move/Rename file/dir | `mv <src> <dest>` |
 | `tree` | Directory tree | `tree` |
 | `sysinfo` | System info | `sysinfo` |
 | `uptime` | System uptime | `uptime` |
@@ -135,13 +135,14 @@ Deletes files or directories.
   - To wipe a folder completely, you **must** use: `rm -dr * --yes-i-am-sure`
 
 ### `cp`
-Copies a file from one path to another.
+Copies a file or an entire directory (recursively) from one path to another.
 - **Usage:** `cp <src> <dest>`
+- **Note:** No flags required for recursive copy; it is automatic for directories.
 
 ### `mv` (alias: `ren`)
-Moves or renames a file/directory.
+Moves or renames a file or directory.
 - **Usage:** `mv <src> <dest>`
-- **Example:** `ren old.txt new.txt`
+- **Example:** `ren old_folder new_folder`
 
 ---
 

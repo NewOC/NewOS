@@ -8,6 +8,10 @@ pub const printNum = common.printNum;
 pub const reboot = common.reboot;
 pub const shutdown = common.shutdown;
 
+pub const fat = @import("../drivers/fat.zig");
+pub const ata = @import("../drivers/ata.zig");
+pub const global_common = @import("../commands/common.zig");
+
 // String utilities
 pub fn streq(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;

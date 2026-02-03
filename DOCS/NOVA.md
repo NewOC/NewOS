@@ -1,86 +1,131 @@
-# Nova Language - Comprehensive Guide
+# Nova Language - Comprehensive Guide (v0.10.5)
 
-Nova is a lightweight, statement-based interpreted language designed specifically for the NewOS kernel. It provides a simple environment for calculations, string manipulation, and system control.
+Nova is a statement-based interpreted language for the NewOS kernel. It provides a simple environment for automation, system control, and filesystem management.
 
-## 1. Variable Assignment (`set`)
+---
 
-Nova uses the `set` keyword to declare or update variables. There are two primary types: `int` for 32-bit signed integers and `string` for text.
+## 🚀 1. Variable Management
 
-### Integer Variables
-Integers are stored as 32-bit signed values.
+Nova uses the `set` keyword to declare or update variables.
+
+### Integer Variables (`int`)
+32-bit signed values.
 ```nova
 set int age = 20;
-set int next_year = age + 1;
-print(next_year); // Output: 21
+set int next = age + 1;
+print(next); // 21
 ```
 
-### String Variables
-Strings are wrapped in double quotes.
+### String Variables (`string`)
+UTF-8 text strings (up to 64 chars).
 ```nova
 set string user = "Admin";
-set string welcome = "Hello, " + user;
-print(welcome); // Output: Hello, Admin
+print("User: " + user); // User: Admin
 ```
-
-### Key Rules for `set`:
-- **Naming**: Variable names can be up to 16 characters long.
-- **Updating**: If you `set` an existing variable, its value and type will be updated.
-- **Auto-casting**: If you assign an integer expression to a `string` variable, it is automatically converted to text.
-  ```nova
-  set string result = 100 + 50; // result becomes "150"
-  ```
 
 ---
 
-## 2. Expressions and Operators
+## 🧮 2. Expressions & Comparisons
 
-Nova evaluates expressions using a **Left-to-Right** approach. Standard mathematical precedence (PEMDAS) is *not* currently implemented, but you can control order using parentheses.
+### Arithmetic
+- `+`, `-`, `*`, `/`
+- Use `(...)` for order of operations.
 
-### Arithmetic Operators
-- `+` (Addition)
-- `-` (Subtraction)
-- `*` (Multiplication)
-- `/` (Integer division)
+### Comparisons (v0.10+)
+Comparison operators return `1` (True) or `0` (False).
+- `==` - Equal
+- `!=` - Not Equal
+- `<` - Less Than
+- `>` - Greater Than
 
-### String Operators
-- `+` (Concatenation): Joins two strings together.
+### Math Functions (v0.10.2+)
+| Function | Description | Note |
+|----------|-------------|------|
+| `abs(n)` | Absolute value | |
+| `min(a, b)`| Minimum of two values | |
+| `max(a, b)`| Maximum of two values | |
+| `random(min, max)` | Pseudo-random integer | Precision high (TSC seeded) |
+| `sin(deg)` | Sine of angle | Returns value * 100 |
+| `cos(deg)` | Cosine of angle | Returns value * 100 |
+| `tg(deg)`  | Tangent of angle | Same as `tan()` (*100) |
+| `ctg(deg)` | Cotangent of angle | Returns value * 100 |
 
-### Parentheses
-Use `(` and `)` to group operations. 
+### User Dialogue (v0.10.1+)
 ```nova
-set int val = 2 * (5 + 5); // 20
+set string name = input("What is your name? ");
+print("Hello, " + name + "!");
+
+set int age = input("How old are you? ");
+if age > 18 {
+    print("Welcome, adult!");
+}
 ```
 
 ---
 
-## 3. Built-in Commands
+## 📂 3. Filesystem Native Functions
 
-- `print(expression);`: Evaluates the expression and prints result.
-- `exit();`: Closes the Nova interpreter and returns to the shell.
-- `reboot();`: Immediate system restart.
-- `shutdown();`: Immediate system power-off (via ACPI).
+Nova can now manipulate the NewOS filesystem directly using built-in functions.
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `create_file(path)` | Create an empty file | `create_file("test.txt");` |
+| `write_file(path, data)` | Write text to file | `write_file("log.txt", "Entry 1");` |
+| `mkdir(path)` | Create a directory | `mkdir("scripts");` |
+| `delete(path)` | Delete file or directory | `delete("temp.txt");` |
+| `rename(old, new)` | Rename/Move file or dir | `rename("a.txt", "b.txt");` |
+| `copy(src, dest)` | Copy file or directory | `copy("a.txt", "backup.txt");` |
+| `read(path)` | Read file into string | `set string s = read("a.txt");` |
+
+### System Integration (v0.10.2+)
+You can now execute shell commands directly from Nova scripts:
+- `shell("command")`
+- **Example:** `shell("ls /");` or `shell("clear");`
 
 ---
 
-## 4. Multi-Statement Logic
+## 🚦 4. Control Flow (Blocks)
 
-Nova supports executing multiple statements on a single line by separating them with a semicolon.
+Nova v0.10 introduces block-based control flow using `{` and `}`.
 
-**Example:**
+### If Statements
 ```nova
-set int a = 5; set int b = 10; print(a + b);
+set int x = 10;
+if x > 5 {
+    print("Greater than 5");
+} else {
+    print("5 or less");
+}
+```
+
+### While Loops
+```nova
+set int count = 0;
+while count < 3 {
+    print("Line " + count);
+    set int count = count + 1;
+}
 ```
 
 ---
 
-## 5. Technical Limits & Implementation Details
+## 📜 5. Script Support (`.nv` files)
 
-Nova is optimized for a low-memory kernel environment:
-- **Max Variables**: 16 variables total.
-- **Max Variable Name**: 16 characters.
-- **Max String Length**: 64 characters (internally stored).
-- **Execution**: Purely interpreted statement-by-statement.
-- **REPL Features**:
-    - **Tab Completion**: Autocompletes `set string`, `set int`, `print(`, etc.
-    - **History**: Press **Up/Down** to navigate the last 10 commands.
-    - **Insert Mode**: Toggleable with the **Insert** key.
+You can write Nova scripts in any text editor (like `edit`) and save them with the `.nv` extension.
+
+### Running a script:
+From the NewOS shell:
+```bash
+1:/> nova myscript.nv
+```
+
+---
+
+## 🔧 6. Technical Limits
+- **Execution**: Recursive block-based interpreter.
+- **Max Variables**: 16.
+- **Max String Length**: 64 chars.
+- **Max Script Size**: 4096 bytes.
+- **Case Sensitivity**: Commands and keywords are case-sensitive (e.g., `if`, not `IF`).
+
+*Generated for NewOS v0.10*

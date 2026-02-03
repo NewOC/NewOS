@@ -587,6 +587,116 @@ fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u
     if (changed) ata.write_sector(drive, sector, buffer);
 }
 
+
+
+pub fn copy_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, src_path: []const u8, dest_path: []const u8) bool {
+    const src_res = resolve_path(drive, bpb, dir_cluster, src_path) orelse return false;
+    const dest_res = resolve_path(drive, bpb, dir_cluster, dest_path) orelse return false;
+    return copy_file_literal(drive, bpb, src_res.dir_cluster, src_res.file_name, dest_res.dir_cluster, dest_res.file_name);
+}
+
+pub fn copy_file_literal(drive: ata.Drive, bpb: BPB, src_dir: u32, src_name: []const u8, dest_dir: u32, dest_name: []const u8) bool {
+    const src_entry = find_entry_literal(drive, bpb, src_dir, src_name) orelse return false;
+    if ((src_entry.attr & 0x10) != 0) return false;
+
+    // 1. Create destination entry
+    const dest_cluster = find_free_cluster(drive, bpb) orelse return false;
+    const fat_eof = if (bpb.fat_type == .FAT12) @as(u32, 0xFFF) else @as(u32, 0xFFFF);
+    set_fat_entry(drive, bpb, dest_cluster, fat_eof);
+    
+    if (!add_directory_entry(drive, bpb, dest_dir, dest_name, dest_cluster, src_entry.file_size, src_entry.attr)) {
+        set_fat_entry(drive, bpb, dest_cluster, 0);
+        return false;
+    }
+
+    // 2. Copy data sector by sector to avoid large memory allocations
+    var current_src = @as(u32, src_entry.first_cluster_low);
+    var current_dest = dest_cluster;
+    const eof_limit = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
+
+    var sector_buf: [512]u8 = undefined;
+    while (current_src < eof_limit) {
+        const src_lba = bpb.first_data_sector + (current_src - 2) * bpb.sectors_per_cluster;
+        const dest_lba = bpb.first_data_sector + (current_dest - 2) * bpb.sectors_per_cluster;
+        
+        var s: u32 = 0;
+        while (s < bpb.sectors_per_cluster) : (s += 1) {
+            ata.read_sector(drive, src_lba + s, &sector_buf);
+            ata.write_sector(drive, dest_lba + s, &sector_buf);
+        }
+        
+        current_src = get_fat_entry(drive, bpb, current_src);
+        if (current_src < 2 or current_src >= eof_limit) break;
+        
+        const next_dest = find_free_cluster(drive, bpb) orelse {
+            // Error handling for out of space during copy would go here
+            return false;
+        };
+        set_fat_entry(drive, bpb, current_dest, next_dest);
+        set_fat_entry(drive, bpb, next_dest, fat_eof);
+        current_dest = next_dest;
+    }
+    
+    return true;
+}
+
+pub fn copy_directory(drive: ata.Drive, bpb: BPB, parent_cluster: u32, src_path: []const u8, dest_path: []const u8) bool {
+    const src_res = resolve_path(drive, bpb, parent_cluster, src_path) orelse return false;
+    const dest_res = resolve_path(drive, bpb, parent_cluster, dest_path) orelse return false;
+    return copy_directory_literal(drive, bpb, src_res.dir_cluster, src_res.file_name, dest_res.dir_cluster, dest_res.file_name);
+}
+
+pub fn copy_directory_literal(drive: ata.Drive, bpb: BPB, src_parent: u32, src_name: []const u8, dest_parent: u32, dest_name: []const u8) bool {
+    const entry = find_entry_literal(drive, bpb, src_parent, src_name) orelse return false;
+    if ((entry.attr & 0x10) == 0) return copy_file_literal(drive, bpb, src_parent, src_name, dest_parent, dest_name);
+    
+    // 1. Create target directory
+    if (!create_directory_literal(drive, bpb, dest_parent, dest_name)) return false;
+    const target_entry = find_entry_literal(drive, bpb, dest_parent, dest_name) orelse return false;
+    const target_cluster = target_entry.first_cluster_low;
+
+    // 2. Copy entries
+    copy_all_entries(drive, bpb, entry.first_cluster_low, target_cluster);
+    return true;
+}
+
+fn copy_all_entries(drive: ata.Drive, bpb: BPB, src_cluster: u32, dest_cluster: u32) void {
+    var buffer: [512]u8 = undefined;
+    var current = src_cluster;
+    const eof_val = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
+
+    while (current < eof_val) {
+        const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
+        var s: u32 = 0;
+        while (s < bpb.sectors_per_cluster) : (s += 1) {
+            ata.read_sector(drive, lba + s, &buffer);
+            var i: u32 = 0;
+            while (i < 512) : (i += 32) {
+                if (buffer[i] == 0) return;
+                if (buffer[i] == 0xE5) continue;
+                if (buffer[i + 11] == 0x0F) continue;
+
+                const name_info = get_name_from_raw(buffer[i..i+32]);
+                const name = name_info.buf[0..name_info.len];
+                if (common.std_mem_eql(name, ".") or common.std_mem_eql(name, "..")) continue;
+
+                copy_entry_recursive(drive, bpb, current, name, dest_cluster);
+            }
+        }
+        current = get_fat_entry(drive, bpb, current);
+        if (current == 0) break;
+    }
+}
+
+fn copy_entry_recursive(drive: ata.Drive, bpb: BPB, src_dir_cluster: u32, name: []const u8, dest_dir_cluster: u32) void {
+    const entry = find_entry_literal(drive, bpb, src_dir_cluster, name) orelse return;
+    if ((entry.attr & 0x10) != 0) {
+        _ = copy_directory_literal(drive, bpb, src_dir_cluster, name, dest_dir_cluster, name);
+    } else {
+        _ = copy_file_literal(drive, bpb, src_dir_cluster, name, dest_dir_cluster, name);
+    }
+}
+
 fn free_cluster_chain(drive: ata.Drive, bpb: BPB, start_cluster: u32) void {
     if (start_cluster < 2) return;
     var current = start_cluster;

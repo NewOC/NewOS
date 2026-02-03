@@ -42,42 +42,26 @@ pub fn cmd_cp(args: []const u8) void {
         return;
     };
     
-    // 2. Read source file size
+    // 2. Resolve source
     const entry = fat.find_entry(drive, bpb, common.current_dir_cluster, src) orelse {
-        common.printZ("Error: Source file not found\n");
+        common.printZ("Error: Source not found\n");
         return;
     };
     
-    const size = entry.file_size;
-    if (size == 0) {
-        // Create empty file
-        _ = fat.write_file(drive, bpb, common.current_dir_cluster, dest, "");
-        common.printZ("File copied (empty).\n");
-        return;
-    }
+    const is_dir = (entry.attr & 0x10) != 0;
     
-    // 3. Allocate buffer
-    // We use the heap allocator
-    const buf = memory.heap.alloc(size);
-    if (buf == null) {
-        common.printZ("Error: Out of memory (file too large)\n");
-        return;
-    }
-    const buffer = buf.?[0..size];
-    defer memory.heap.free(buf.?);
-    
-    // 4. Read file
-    const read = fat.read_file(drive, bpb, common.current_dir_cluster, src, buffer.ptr);
-    if (read < size) {
-        common.printZ("Error: Failed to read entire source file\n");
-        return;
-    }
-    
-    // 5. Write dest
-    if (fat.write_file(drive, bpb, common.current_dir_cluster, dest, buffer)) {
-        common.printZ("File copied successfully.\n");
+    if (is_dir) {
+        if (fat.copy_directory(drive, bpb, common.current_dir_cluster, src, dest)) {
+            common.printZ("Directory copied recursively.\n");
+        } else {
+            common.printZ("Error: Failed to copy directory.\n");
+        }
     } else {
-        common.printZ("Error: Failed to write destination file\n");
+        if (fat.copy_file(drive, bpb, common.current_dir_cluster, src, dest)) {
+            common.printZ("File copied successfully.\n");
+        } else {
+            common.printZ("Error: Failed to copy file.\n");
+        }
     }
 }
 

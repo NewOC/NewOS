@@ -14,6 +14,20 @@ pub const CmdType = enum {
     exit,
     reboot,
     shutdown,
+    sleep,
+    // File operations
+    fs_delete,
+    fs_rename,
+    fs_copy,
+    fs_mkdir,
+    fs_write,
+    fs_create,
+    // Control Flow
+    if_stmt,
+    else_stmt,
+    while_stmt,
+    end_block,
+    shell_exec,
     unknown,
     empty,
 };
@@ -45,6 +59,11 @@ pub fn parseStatement(buffer: []const u8, start: usize) Statement {
     // Check for shutdown();
     if (common.startsWith(buffer[pos..], "shutdown();")) {
         return .{ .cmd_type = .shutdown, .arg_start = 0, .arg_len = 0 };
+    }
+    
+    // Check for sleep(
+    if (common.startsWith(buffer[pos..], "sleep(")) {
+        return .{ .cmd_type = .sleep, .arg_start = pos + 6, .arg_len = findParensContent(buffer, pos + 6) };
     }
     
     // Check for set string
@@ -105,7 +124,66 @@ pub fn parseStatement(buffer: []const u8, start: usize) Statement {
         };
     }
     
+    // File operations
+    if (common.startsWith(buffer[pos..], "delete(")) {
+        return .{ .cmd_type = .fs_delete, .arg_start = pos + 7, .arg_len = findParensContent(buffer, pos + 7) };
+    }
+    if (common.startsWith(buffer[pos..], "rename(")) {
+        return .{ .cmd_type = .fs_rename, .arg_start = pos + 7, .arg_len = findParensContent(buffer, pos + 7) };
+    }
+    if (common.startsWith(buffer[pos..], "copy(")) {
+        return .{ .cmd_type = .fs_copy, .arg_start = pos + 5, .arg_len = findParensContent(buffer, pos + 5) };
+    }
+    if (common.startsWith(buffer[pos..], "mkdir(")) {
+        return .{ .cmd_type = .fs_mkdir, .arg_start = pos + 6, .arg_len = findParensContent(buffer, pos + 6) };
+    }
+    if (common.startsWith(buffer[pos..], "write_file(")) {
+        return .{ .cmd_type = .fs_write, .arg_start = pos + 11, .arg_len = findParensContent(buffer, pos + 11) };
+    }
+    if (common.startsWith(buffer[pos..], "create_file(")) {
+        return .{ .cmd_type = .fs_create, .arg_start = pos + 12, .arg_len = findParensContent(buffer, pos + 12) };
+    }
+
+    // Control Flow
+    if (common.startsWith(buffer[pos..], "if ")) {
+        return .{ .cmd_type = .if_stmt, .arg_start = pos + 3, .arg_len = findBlockCondition(buffer, pos + 3) };
+    }
+    if (common.startsWith(buffer[pos..], "while ")) {
+        return .{ .cmd_type = .while_stmt, .arg_start = pos + 6, .arg_len = findBlockCondition(buffer, pos + 6) };
+    }
+    if (common.startsWith(buffer[pos..], "else")) {
+        return .{ .cmd_type = .else_stmt, .arg_start = 0, .arg_len = 0 };
+    }
+    if (common.startsWith(buffer[pos..], "}")) {
+        return .{ .cmd_type = .end_block, .arg_start = 0, .arg_len = 0 };
+    }
+    if (common.startsWith(buffer[pos..], "shell(")) {
+        return .{ .cmd_type = .shell_exec, .arg_start = pos + 6, .arg_len = findParensContent(buffer, pos + 6) };
+    }
+    
     return .{ .cmd_type = .unknown, .arg_start = 0, .arg_len = 0 };
+}
+
+fn findParensContent(buffer: []const u8, start: usize) usize {
+    var end = start;
+    var depth: i32 = 1;
+    while (end < buffer.len and buffer[end] != 0) {
+        if (buffer[end] == '(') depth += 1;
+        if (buffer[end] == ')') {
+            depth -= 1;
+            if (depth == 0) break;
+        }
+        end += 1;
+    }
+    return end - start;
+}
+
+fn findBlockCondition(buffer: []const u8, start: usize) usize {
+    var end = start;
+    while (end < buffer.len and buffer[end] != 0 and buffer[end] != '{') {
+        end += 1;
+    }
+    return end - start;
 }
 
 // Find next statement (after semicolon)

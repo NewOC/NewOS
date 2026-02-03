@@ -9,12 +9,18 @@ const versioning = @import("../versioning.zig");
 const vga = @import("../drivers/vga.zig");
 const serial = @import("../drivers/serial.zig");
 const global_common = @import("../commands/common.zig");
+const fat = @import("../drivers/fat.zig");
+const ata = @import("../drivers/ata.zig");
+const shell = @import("../shell.zig");
 
 const BUFFER_SIZE: usize = 128;
 const HISTORY_SIZE: usize = 10;
 
 const NOVA_KEYWORDS = [_][]const u8{
     "print(", "set string ", "set int ", "exit()", "reboot()", "shutdown()",
+    "input(", "delete(", "rename(", "copy(", "mkdir(", "write_file(", "create_file(",
+    "if ", "else", "while ", "sleep(", "shell(", "read(", "random(",
+    "min(", "max(", "abs(", "sin(", "cos(", "tan(", "atan(",
 };
 
 // Interpreter state
@@ -39,24 +45,183 @@ var auto_prefix_len: usize = 0;
 var auto_match_index: usize = 0;
 var auto_start_pos: u16 = 0;
 
+/// Read a simple line of input into the provided buffer
+pub fn readInput(buf: []u8) usize {
+    var length: usize = 0;
+    while (length < buf.len - 1) {
+        const key = keyboard.keyboard_wait_char();
+        if (key == 10 or key == 13) { // Enter
+            common.print_char('\n');
+            break;
+        } else if (key == 8 or key == 127) { // Backspace
+            if (length > 0) {
+                length -= 1;
+                buf[length] = 0;
+                // Visually backspace
+                const cur_row = vga.zig_get_cursor_row();
+                const cur_col = vga.zig_get_cursor_col();
+                if (cur_col > 0) {
+                    vga.zig_set_cursor(cur_row, cur_col - 1);
+                    vga.zig_print_char(' ');
+                    vga.zig_set_cursor(cur_row, cur_col - 1);
+                }
+            }
+        } else if (key >= 32 and key <= 126) {
+            buf[length] = key;
+            length += 1;
+            common.print_char(key);
+        }
+    }
+    return length;
+}
+
 /// Start the Nova interpreter environment
-pub fn start() void {
+pub fn start(script_path: ?[]const u8) void {
     exit_flag = false;
+    global_common.seed_random_with_tsc();
     
-    // Welcome message
-    common.printZ(
-        "Nova Language v" ++ versioning.NOVA_VERSION ++ "\n" ++
-        "Commands: print(\"text\"); exit();\n"
-    );
-    
-    // Main REPL loop (Read-Eval-Print Loop)
-    while (!exit_flag) {
-        common.printZ("nova> ");
-        readLine();
-        if (exit_flag) break;
-        executeLine();
+    if (script_path) |path| {
+        runScript(path);
+    } else {
+        // Welcome message
+        common.printZ(
+            "Nova Language v" ++ versioning.NOVA_VERSION ++ "\n" ++
+            "Commands: print(\"text\"); exit();\n"
+        );
+        
+        // Main REPL loop (Read-Eval-Print Loop)
+        while (!exit_flag) {
+            common.printZ("nova> ");
+            readLine();
+            if (exit_flag) break;
+            executeLine();
+        }
     }
 }
+
+fn runScript(path: []const u8) void {
+    const drive = if (global_common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+    if (global_common.selected_disk < 0) {
+        common.printZ("Error: No disk mounted. Please use 'mount 0' first.\n");
+        return;
+    }
+
+    if (fat.read_bpb(drive)) |bpb| {
+        if (fat.find_entry(drive, bpb, global_common.current_dir_cluster, path)) |entry| {
+            if ((entry.attr & 0x10) != 0) {
+                common.printZ("Error: Path is a directory\n");
+                return;
+            }
+
+            // Allocate a temporary buffer for the script
+            // For now, use a fixed size. We can improve this later.
+            var script_buffer: [4096]u8 = [_]u8{0} ** 4096;
+            const bytes_read = fat.read_file(drive, bpb, global_common.current_dir_cluster, path, &script_buffer);
+            
+            if (bytes_read > 0) {
+                executeScript(script_buffer[0..@intCast(bytes_read)]);
+            } else {
+                common.printZ("Error: Empty file or read error\n");
+            }
+        } else {
+            common.printZ("Error: Script not found: ");
+            common.printZ(path);
+            common.printZ("\n");
+        }
+    }
+}
+
+fn executeScript(script: []const u8) void {
+    var pos: usize = 0;
+    while (pos < script.len and !exit_flag) {
+        // Skip whitespace and empty lines
+        while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r')) : (pos += 1) {}
+        if (pos >= script.len) break;
+
+        const stmt = parser.parseStatement(script, pos);
+        
+        if (stmt.cmd_type == .empty) {
+            pos = parser.nextStatement(script, pos);
+            continue;
+        }
+
+        if (stmt.cmd_type == .if_stmt) {
+            const cond = commands.evaluateCondition(script, stmt);
+            
+            // Find opening brace {
+            var brace_pos = stmt.arg_start + stmt.arg_len;
+            while (brace_pos < script.len and script[brace_pos] != '{') : (brace_pos += 1) {}
+            
+            if (brace_pos >= script.len) {
+                common.printZ("Error: Missing { for if\n");
+                break;
+            }
+
+            const end_brace = findMatchingBrace(script, brace_pos + 1);
+            
+            if (cond) {
+                executeScript(script[brace_pos + 1 .. end_brace]);
+                pos = end_brace + 1;
+                // SKIP any following else block
+                while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r' or script[pos] == ';')) : (pos += 1) {}
+                if (pos + 4 <= script.len and common.startsWith(script[pos..], "else")) {
+                    pos += 4;
+                    while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r')) : (pos += 1) {}
+                    if (pos < script.len and script[pos] == '{') {
+                        pos = findMatchingBrace(script, pos + 1) + 1;
+                    }
+                }
+            } else {
+                // Check if an else block follows
+                var next_pos = end_brace + 1;
+                while (next_pos < script.len and (script[next_pos] == ' ' or script[next_pos] == '\n' or script[next_pos] == '\r' or script[next_pos] == ';')) : (next_pos += 1) {}
+                if (next_pos + 4 <= script.len and common.startsWith(script[next_pos..], "else")) {
+                    var else_brace_pos = next_pos + 4;
+                    while (else_brace_pos < script.len and script[else_brace_pos] != '{') : (else_brace_pos += 1) {}
+                    if (else_brace_pos < script.len) {
+                        const else_end_brace = findMatchingBrace(script, else_brace_pos + 1);
+                        executeScript(script[else_brace_pos + 1 .. else_end_brace]);
+                        pos = else_end_brace + 1;
+                    } else {
+                       pos = next_pos + 4;
+                    }
+                } else {
+                    pos = end_brace + 1;
+                }
+            }
+        } else if (stmt.cmd_type == .while_stmt) {
+            var brace_pos = stmt.arg_start + stmt.arg_len;
+            while (brace_pos < script.len and script[brace_pos] != '{') : (brace_pos += 1) {}
+            if (brace_pos >= script.len) { break; }
+            
+            const end_brace = findMatchingBrace(script, brace_pos + 1);
+            const block_content = script[brace_pos + 1 .. end_brace];
+            
+            while (commands.evaluateCondition(script, stmt) and !exit_flag) {
+                executeScript(block_content);
+            }
+            pos = end_brace + 1;
+        } else {
+            // Normal command
+            commands.execute(script, stmt, &exit_flag);
+            pos = parser.nextStatement(script, pos);
+        }
+    }
+}
+
+fn findMatchingBrace(script: []const u8, start_idx: usize) usize {
+    var depth: i32 = 1;
+    var i = start_idx;
+    while (i < script.len) : (i += 1) {
+        if (script[i] == '{') depth += 1;
+        if (script[i] == '}') {
+            depth -= 1;
+            if (depth == 0) return i;
+        }
+    }
+    return i;
+}
+
 
 /// Read a single line of input from the keyboard
 fn readLine() void {
@@ -306,18 +471,5 @@ fn moveScreenCursor() void {
 /// Parse and execute the buffered command line
 fn executeLine() void {
     if (buf_len == 0) return;
-    
-    var pos: usize = 0;
-    // Iterate through all statements in the buffer (separated by ;)
-    while (pos < buf_len and !exit_flag) {
-        const stmt = parser.parseStatement(buffer[0..buf_len], pos);
-        
-        if (stmt.cmd_type == .empty) break;
-        
-        // Execute the parsed command
-        commands.execute(buffer[0..buf_len], stmt, &exit_flag);
-        
-        // Move pos to the next statement
-        pos = parser.nextStatement(buffer[0..buf_len], pos);
-    }
+    executeScript(buffer[0..buf_len]);
 }
