@@ -25,7 +25,7 @@
 | `md` | Alias for `mkdir` | `md <name>` |
 | `tree` | Show directory structure | `tree` |
 | `touch` | Create an empty file | `touch <file_path>` |
-| `write` | Write text to a file | `write <file_path> <text>` |
+| `write` | Write/Append text to a file | `write [-a] <file_path> <text>` |
 | `cat` | View file content | `cat <file_path>` |
 | `cp` | Copy file | `cp <src> <dest>` |
 | `mv` | Move or rename file | `mv <src> <dest>` |
@@ -55,4 +55,4 @@
 ---
 *Note: All file system commands support hierarchical paths (absolute and relative), `.` (current), `..` (parent) navigation, and quoted strings for names with spaces (e.g., `cd "New Folder"`).*
 
-*Redirection: Most commands support output redirection using `>` (e.g., `ls > list.txt`, `help > manual.txt`).*
+*Redirection: Most commands support output redirection using `>` (overwrite) or `>>` (append). E.g., `ls > list.txt`, `ls >> list.txt`.*

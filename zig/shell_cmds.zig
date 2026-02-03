@@ -567,8 +567,8 @@ fn tree_sector(drive: ata.Drive, bpb: fat.BPB, buffer: *[512]u8, depth: usize) b
     return true;
 }
 
-/// Execute 'write' operation (create or overwrite file)
-pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const u8, data_len: u32) void {
+/// Execute 'write' operation (create, overwrite or append to file)
+pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const u8, data_len: u32, append: bool) void {
     if (common.selected_disk < 0) {
         var id = common.fs_find(name_ptr, @intCast(name_len));
         if (id < 0) {
@@ -582,7 +582,10 @@ pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const
         if (fat.read_bpb(drive)) |bpb| {
             const name = name_ptr[0..name_len];
             const data = data_ptr[0..data_len];
-            if (!fat.write_file(drive, bpb, common.current_dir_cluster, name, data)) {
+            const success = if (append) fat.append_to_file(drive, bpb, common.current_dir_cluster, name, data)
+                            else fat.write_file(drive, bpb, common.current_dir_cluster, name, data);
+
+            if (!success) {
                 common.printZ("Error: Failed to write file to disk\n");
             }
         }

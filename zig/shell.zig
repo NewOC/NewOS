@@ -55,7 +55,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "mkfs-fat12", .help = "Format drive as FAT12 (legacy)", .handler = cmd_handler_mkfs12 },
     .{ .name = "mkfs-fat16", .help = "Format drive as FAT16 (standard)", .handler = cmd_handler_mkfs16 },
     .{ .name = "touch", .help = "Create an empty file", .handler = cmd_handler_touch },
-    .{ .name = "write", .help = "write <f> <t> - Write string to file", .handler = cmd_handler_write },
+    .{ .name = "write", .help = "write [-a] <f> <t> - Write string to file (-a to append)", .handler = cmd_handler_write },
     .{ .name = "rm", .help = "rm [-d] [-r] <f|*> - Delete file/dir", .handler = cmd_handler_rm },
     .{ .name = "cat", .help = "Display text file contents", .handler = cmd_handler_cat },
     .{ .name = "edit", .help = "Open primitive text editor", .handler = cmd_handler_edit },
@@ -804,9 +804,18 @@ pub fn shell_execute_literal(cmd: []const u8) void {
     var cmd_raw = common.trim(cmd);
     if (cmd_raw.len == 0) return;
 
-    // Output redirection support: cmd > file
+    // Output redirection support: cmd > file or cmd >> file
     var redirect_file: ?[]const u8 = null;
-    if (common.std_mem_indexOf(u8, cmd_raw, ">")) |idx| {
+    var append_mode: bool = false;
+    if (common.std_mem_indexOf(u8, cmd_raw, ">>")) |idx| {
+        append_mode = true;
+        const file_part = common.trim(cmd_raw[idx + 2 ..]);
+        if (file_part.len > 0) {
+            redirect_file = file_part;
+            cmd_raw = common.trim(cmd_raw[0..idx]);
+        }
+    } else if (common.std_mem_indexOf(u8, cmd_raw, ">")) |idx| {
+        append_mode = false;
         const file_part = common.trim(cmd_raw[idx + 1 ..]);
         if (file_part.len > 0) {
             redirect_file = file_part;
@@ -832,7 +841,11 @@ pub fn shell_execute_literal(cmd: []const u8) void {
             common.redirect_active = false;
             const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
             if (fat.read_bpb(drive)) |bpb| {
-                _ = fat.write_file(drive, bpb, common.current_dir_cluster, file, common.redirect_buffer[0..common.redirect_pos]);
+                if (append_mode) {
+                    _ = fat.append_to_file(drive, bpb, common.current_dir_cluster, file, common.redirect_buffer[0..common.redirect_pos]);
+                } else {
+                    _ = fat.write_file(drive, bpb, common.current_dir_cluster, file, common.redirect_buffer[0..common.redirect_pos]);
+                }
             }
             common.redirect_pos = 0;
         }
@@ -1040,14 +1053,46 @@ fn cmd_handler_write(args: []const u8) void {
     var argv: [8][]const u8 = undefined;
     const argc = common.parseArgs(args, &argv);
     if (argc < 2) {
-        common.printZ("Usage: write <file> <text>\n");
+        common.printZ("Usage: write [-a] <file> <text>\n");
         return;
     }
-    const name = argv[0];
 
-    // Find the start of the second argument in the raw string to get everything else as data
+    var append = false;
+    var arg_idx: usize = 0;
+    if (common.std_mem_eql(argv[0], "-a")) {
+        append = true;
+        arg_idx = 1;
+        if (argc < 2) {
+            common.printZ("Usage: write [-a] <file> <text>\n");
+            return;
+        }
+    }
+
+    const name = argv[arg_idx];
+
+    if (!append and common.selected_disk >= 0) {
+        const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+        if (fat.read_bpb(drive)) |bpb| {
+            if (fat.find_entry(drive, bpb, common.current_dir_cluster, name)) |_| {
+                common.printZ("Warning: overwriting existing file '");
+                common.printZ(name);
+                common.printZ("'\n");
+            }
+        }
+    }
+
+    // Find the start of the data in the raw string
     var i: usize = 0;
+    // Skip spaces
     while (i < args.len and args[i] == ' ') : (i += 1) {}
+
+    if (append) {
+        // Skip "-a" and following spaces
+        i += 2;
+        while (i < args.len and args[i] == ' ') : (i += 1) {}
+    }
+
+    // Skip filename
     if (i < args.len and args[i] == '"') {
         i += 1;
         while (i < args.len and args[i] != '"') : (i += 1) {}
@@ -1055,10 +1100,11 @@ fn cmd_handler_write(args: []const u8) void {
     } else {
         while (i < args.len and args[i] != ' ') : (i += 1) {}
     }
+    // Skip spaces before data
     while (i < args.len and args[i] == ' ') : (i += 1) {}
 
     const data = args[i..];
-    shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len));
+    shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len), append);
 }
 
 fn cmd_handler_rm(args: []const u8) void {

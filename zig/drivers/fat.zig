@@ -1019,6 +1019,84 @@ pub fn write_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8
     return false;
 }
 
+pub fn append_to_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8, data: []const u8) bool {
+    if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
+        return append_to_file_literal(drive, bpb, res.dir_cluster, res.file_name, data);
+    } else {
+        return write_file(drive, bpb, dir_cluster, path, data);
+    }
+}
+
+fn get_last_cluster(drive: ata.Drive, bpb: BPB, start_cluster: u32) u32 {
+    var current = start_cluster;
+    if (current == 0) return 0;
+    const eof_limit = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
+    while (true) {
+        const next = get_fat_entry(drive, bpb, current);
+        if (next < 2 or next >= eof_limit) return current;
+        current = next;
+    }
+}
+
+fn append_to_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8, data: []const u8) bool {
+    const entry = find_entry_literal(drive, bpb, dir_cluster, name) orelse return write_file_literal(drive, bpb, dir_cluster, name, data);
+
+    if (data.len == 0) return true;
+
+    const start_cluster = entry.first_cluster_low | (@as(u32, entry.first_cluster_high) << 16);
+    const old_size = entry.file_size;
+    const bytes_per_cluster = bpb.sectors_per_cluster * 512;
+
+    var current_cluster = get_last_cluster(drive, bpb, start_cluster);
+    var bytes_written: u32 = 0;
+    var offset_in_cluster = old_size % bytes_per_cluster;
+    const eof_val = if (bpb.fat_type == .FAT12) @as(u32, 0xFFF) else @as(u32, 0xFFFF);
+
+    // If last cluster is full, allocate a new one first
+    if (old_size > 0 and offset_in_cluster == 0) {
+        const next = find_free_cluster(drive, bpb) orelse return false;
+        set_fat_entry(drive, bpb, current_cluster, next);
+        set_fat_entry(drive, bpb, next, eof_val);
+        current_cluster = next;
+        offset_in_cluster = 0;
+    }
+
+    while (bytes_written < data.len) {
+        const lba = bpb.first_data_sector + (current_cluster - 2) * bpb.sectors_per_cluster;
+
+        var sector_in_cluster = @as(u32, @intCast(offset_in_cluster / 512));
+        var offset_in_sector = @as(u32, @intCast(offset_in_cluster % 512));
+
+        while (sector_in_cluster < bpb.sectors_per_cluster and bytes_written < data.len) {
+            var sector_buf: [512]u8 = [_]u8{0} ** 512;
+            const to_copy = @min(data.len - bytes_written, 512 - offset_in_sector);
+
+            if (offset_in_sector > 0 or (old_size > 0 and bytes_written == 0)) {
+                 ata.read_sector(drive, lba + sector_in_cluster, &sector_buf);
+            }
+
+            for (0..to_copy) |j| {
+                sector_buf[offset_in_sector + j] = data[bytes_written + j];
+            }
+            ata.write_sector(drive, lba + sector_in_cluster, &sector_buf);
+
+            bytes_written += @intCast(to_copy);
+            offset_in_sector = 0;
+            sector_in_cluster += 1;
+        }
+
+        if (bytes_written < data.len) {
+            const next = find_free_cluster(drive, bpb) orelse return false;
+            set_fat_entry(drive, bpb, current_cluster, next);
+            set_fat_entry(drive, bpb, next, eof_val);
+            current_cluster = next;
+            offset_in_cluster = 0;
+        }
+    }
+
+    return update_entry_size_literal(drive, bpb, dir_cluster, name, old_size + @intCast(data.len));
+}
+
 fn write_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8, data: []const u8) bool {
     var cluster: u32 = 0;
     const exists = find_entry_literal(drive, bpb, dir_cluster, name);
