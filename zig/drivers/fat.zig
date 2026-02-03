@@ -186,7 +186,6 @@ fn list_sector(drive: ata.Drive, sector: u32, show_hidden: bool, lfn: *LfnState)
         // Validate LFN Checksum against 8.3 name
         var sum: u8 = 0;
         for (0..11) |k| {
-            // ROR 1 logic
             const is_odd = (sum & 1) != 0;
             sum = (sum >> 1) + (if (is_odd) @as(u8, 0x80) else 0);
             sum = sum +% buffer[i+k];
@@ -196,7 +195,7 @@ fn list_sector(drive: ata.Drive, sector: u32, show_hidden: bool, lfn: *LfnState)
         if (lfn.active and lfn.checksum == sum) {
             use_lfn = true;
         }
-        lfn.active = false; // Consumed
+        lfn.active = false; // Consumed or mismatched
 
         // Filter Logic
         if (!show_hidden) {
@@ -546,8 +545,6 @@ fn find_entry_in_sectors(drive: ata.Drive, name: []const u8, start_sector: u32, 
 
             // Regular Entry
             // 1. Check LFN Match
-            var lfn_match = false;
-            
             var sum: u8 = 0;
             for (0..11) |k| {
                 const is_odd = (sum & 1) != 0;
@@ -562,12 +559,11 @@ fn find_entry_in_sectors(drive: ata.Drive, name: []const u8, start_sector: u32, 
                 const lfn_str = lfn.buf[0..len];
                 
                 if (common.std_mem_eql(lfn_str, name)) {
-                    lfn_match = true;
+                    lfn.active = false; // Consumed
+                    return EntryLocation{ .sector = sector, .offset = i };
                 }
             }
-            lfn.active = false; // Reset LFN
-            
-            if (lfn_match) return EntryLocation{ .sector = sector, .offset = i };
+            lfn.active = false; // Consumed or mismatched
             
             // 2. Check Short Name Match
             var match = true;
@@ -717,7 +713,12 @@ pub fn is_directory_empty(drive: ata.Drive, bpb: BPB, dir_cluster: u32) bool {
             while (i < 512) : (i += 32) {
                 if (buffer[i] == 0) return true; // End of entries
                 if (buffer[i] == 0xE5) continue;
-                if (buffer[i + 11] == 0x0F) continue; // LFN
+                if (buffer[i + 11] == 0x0F) continue; // LFN entry
+
+                // Canonical check for 8.3 dots
+                if (buffer[i] == '.' and (buffer[i+1] == ' ' or (buffer[i+1] == '.' and buffer[i+2] == ' '))) {
+                    continue;
+                }
 
                 const name = get_name_from_raw(buffer[i..i+32]);
                 const n = name.buf[0..name.len];
@@ -1176,7 +1177,9 @@ fn check_needs_lfn(name: []const u8) bool {
             dot_pos = i;
         } else {
             if (c >= 'a' and c <= 'z') return true;
-            if (c == '+' or c == ',' or c == ';' or c == '=' or c == '[' or c == ']') return true;
+            // Characters not allowed in 8.3 names
+            if (c == ' ' or c == '+' or c == ',' or c == ';' or c == '=' or c == '[' or c == ']' or
+                c == '"' or c == '*' or c == '<' or c == '>' or c == '?' or c == '|') return true;
         }
     }
     if (dot_pos) |pos| {
@@ -1204,20 +1207,25 @@ fn generate_short_alias(name: []const u8, out: *[11]u8) void {
     while (i < name.len and out_idx < 6) {
         const c = name[i];
         if (c == '.') break;
-        if (c != ' ') {
+        if (c != ' ' and c != '+' and c != ',' and c != ';' and c != '=' and c != '[' and c != ']' and
+            c != '"' and c != '*' and c != '<' and c != '>' and c != '?' and c != '|') {
             out[out_idx] = toUpper(c);
             out_idx += 1;
         }
         i += 1;
     }
-    out[6] = '~'; out[7] = '1';
+    out[out_idx] = '~';
+    out[out_idx + 1] = '1';
+
     while (i < name.len and name[i] != '.') : (i += 1) {}
     if (i < name.len) {
         i += 1;
         var ext_idx: usize = 8;
         while (i < name.len and ext_idx < 11) : (i += 1) {
-            if (name[i] != ' ') {
-                out[ext_idx] = toUpper(name[i]);
+            const c = name[i];
+            if (c != ' ' and c != '.' and c != '+' and c != ',' and c != ';' and c != '=' and c != '[' and c != ']' and
+                c != '"' and c != '*' and c != '<' and c != '>' and c != '?' and c != '|') {
+                out[ext_idx] = toUpper(c);
                 ext_idx += 1;
             }
         }
