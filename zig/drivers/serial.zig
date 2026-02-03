@@ -5,6 +5,11 @@ pub const PORT = 0x3F8;
 
 pub export fn serial_print_char(c: u8) void {
     while (!is_transmit_empty()) {}
+    // Map LF to CRLF for serial terminal consistency
+    if (c == 10) {
+        outb(PORT, 13);
+        while (!is_transmit_empty()) {}
+    }
     outb(PORT, c);
 }
 
@@ -14,6 +19,14 @@ pub fn serial_print_str(str: []const u8) void {
 
 fn is_transmit_empty() bool {
     return (inb(PORT + 5) & 0x20) != 0;
+}
+
+pub fn serial_has_data() bool {
+    return (inb(PORT + 5) & 1) != 0;
+}
+
+pub fn serial_getchar() u8 {
+    return inb(PORT);
 }
 
 fn outb(port: u16, val: u8) void {

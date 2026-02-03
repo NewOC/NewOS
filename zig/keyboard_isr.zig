@@ -191,6 +191,16 @@ pub export fn isr_keyboard() void {
     }
 }
 
+pub fn serial_inject_char(c: u8) void {
+    const next_head = (buffer_head + 1) % BUFFER_SIZE;
+    if (next_head != buffer_tail) {
+        // Map CR to LF for serial input consistency
+        const mapped = if (c == 13) @as(u8, 10) else c;
+        keyboard_buffer[buffer_head] = mapped;
+        buffer_head = next_head;
+    }
+}
+
 // Get character from buffer (non-blocking)
 export fn keyboard_getchar() u8 {
     if (buffer_tail == buffer_head) {
