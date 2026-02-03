@@ -1094,7 +1094,8 @@ fn append_to_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []
         }
     }
 
-    return update_entry_size_literal(drive, bpb, dir_cluster, name, old_size + @as(u32, @intCast(data.len)));
+    const total_size: u32 = old_size + @as(u32, @intCast(data.len));
+    return update_entry_size_literal(drive, bpb, dir_cluster, name, total_size);
 }
 
 fn write_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8, data: []const u8) bool {
@@ -1107,7 +1108,8 @@ fn write_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []cons
         cluster = find_free_cluster(drive, bpb) orelse return false;
         const eof_val: u32 = if (bpb.fat_type == .FAT12) 0xFFF else 0xFFFF;
         set_fat_entry(drive, bpb, cluster, eof_val);
-        if (!add_directory_entry(drive, bpb, dir_cluster, name, cluster, @intCast(data.len), 0x20)) return false;
+        const data_len: u32 = @intCast(data.len);
+        if (!add_directory_entry(drive, bpb, dir_cluster, name, cluster, data_len, 0x20)) return false;
     }
 
     var bytes_written: u32 = 0;
@@ -1146,7 +1148,8 @@ fn write_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []cons
         }
     }
     
-    return update_entry_size_literal(drive, bpb, dir_cluster, name, @intCast(data.len));
+    const final_size: u32 = @intCast(data.len);
+    return update_entry_size_literal(drive, bpb, dir_cluster, name, final_size);
 }
 
 fn update_entry_size_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8, size: u32) bool {
