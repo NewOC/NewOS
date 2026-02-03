@@ -99,11 +99,32 @@ pub const DirEntry = struct {
     file_size: u32,
 };
 
+const LfnState = struct {
+    buf: [256]u8,
+    active: bool,
+    checksum: u8,
+};
+
+fn extract_lfn_part(buf: []const u8, start: usize, count: usize, out: []u8, out_offset: usize) void {
+    for (0..count) |j| {
+        if (out_offset + j >= out.len) return;
+        const char_low = buf[start + j*2];
+        const char_high = buf[start + j*2 + 1];
+        if (char_low == 0 and char_high == 0) {
+            out[out_offset + j] = 0;
+            return;
+        }
+        out[out_offset + j] = if (char_high == 0) char_low else '?';
+    }
+}
+
 pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, show_hidden: bool) void {
+    var lfn: LfnState = .{ .buf = [_]u8{0} ** 256, .active = false, .checksum = 0 };
+    
     if (dir_cluster == 0) {
         var sector = bpb.first_root_dir_sector;
         while (sector < bpb.first_data_sector) : (sector += 1) {
-            if (!list_sector(drive, sector, show_hidden)) break;
+            if (!list_sector(drive, sector, show_hidden, &lfn)) break;
         }
     } else {
         var current = dir_cluster;
@@ -112,7 +133,7 @@ pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, show_hidden:
             const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
             var s: u32 = 0;
             while (s < bpb.sectors_per_cluster) : (s += 1) {
-                if (!list_sector(drive, lba + s, show_hidden)) break;
+                if (!list_sector(drive, lba + s, show_hidden, &lfn)) break;
             }
             current = get_fat_entry(drive, bpb, current);
             if (current == 0) break;
@@ -120,57 +141,119 @@ pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, show_hidden:
     }
 }
 
-fn list_sector(drive: ata.Drive, sector: u32, show_hidden: bool) bool {
+fn list_sector(drive: ata.Drive, sector: u32, show_hidden: bool, lfn: *LfnState) bool {
     var buffer: [512]u8 = undefined;
     ata.read_sector(drive, sector, &buffer);
     var i: u32 = 0;
     while (i < 512) : (i += 32) {
-        if (buffer[i] == 0) return false;
-        if (buffer[i] == 0xE5) continue;
-        if (buffer[i + 11] == 0x0F) continue; // LFN
+        if (buffer[i] == 0) {
+            lfn.active = false;
+            return false;
+        }
+        if (buffer[i] == 0xE5) {
+             lfn.active = false;
+             continue;
+        }
+        
+        // Check for LFN entry
+        if (buffer[i + 11] == 0x0F) {
+            const seq = buffer[i];
+            const chk = buffer[i + 13];
+            
+            if ((seq & 0x40) != 0) {
+                 lfn.active = true;
+                 lfn.checksum = chk;
+                 @memset(&lfn.buf, 0); // Clear buffer
+            } else if (!lfn.active or lfn.checksum != chk) {
+                 lfn.active = false;
+                 continue;
+            }
+            
+            var index = (seq & 0x1F);
+            if (index < 1) index = 1;
+            const offset = (index - 1) * 13;
+            
+            if (offset < 240) {
+                extract_lfn_part(&buffer, i + 1, 5, &lfn.buf, offset);
+                extract_lfn_part(&buffer, i + 14, 6, &lfn.buf, offset + 5);
+                extract_lfn_part(&buffer, i + 28, 2, &lfn.buf, offset + 11);
+            }
+            continue;
+        }
 
         const attr = buffer[i + 11];
         
-        // Hide dotfiles and hidden attribute files unless show_hidden
+        // Validate LFN Checksum against 8.3 name
+        var sum: u8 = 0;
+        for (0..11) |k| {
+            // ROR 1 logic
+            const is_odd = (sum & 1) != 0;
+            sum = (sum >> 1) + (if (is_odd) @as(u8, 0x80) else 0);
+            sum = sum +% buffer[i+k];
+        }
+        
+        var use_lfn = false;
+        if (lfn.active and lfn.checksum == sum) {
+            use_lfn = true;
+        }
+        lfn.active = false; // Consumed
+
+        // Filter Logic
         if (!show_hidden) {
-            if (buffer[i] == '.') continue;
             if ((attr & 0x02) != 0) continue;
+            if (use_lfn) {
+                if (lfn.buf[0] == '.') continue;
+            } else {
+                if (buffer[i] == '.') continue;
+            }
         }
 
         const is_dir = (attr & 0x10) != 0;
-        
-        const case_bits = buffer[i + 12];
-        const name_lower = (case_bits & 0x08) != 0;
-        const ext_lower = (case_bits & 0x10) != 0;
-
         common.printZ(if (is_dir) "<DIR> " else "      ");
 
-        // Print name
+        // Print Name
         var printed: usize = 0;
-        for (0..8) |j| {
-            const c = buffer[i + j];
-            if (c == ' ') break;
-            common.print_char(if (name_lower and c >= 'A' and c <= 'Z') c + 32 else c);
-            printed += 1;
-        }
-        // Print extension if exists
-        if (buffer[i + 8] != ' ' and buffer[i + 8] != 0) {
-            common.print_char('.');
-            printed += 1;
-            for (0..3) |j| {
-                const c = buffer[i + 8 + j];
-                if (c == ' ' or c == 0) break;
-                common.print_char(if (ext_lower and c >= 'A' and c <= 'Z') c + 32 else c);
+        
+        if (use_lfn) {
+            // Find len
+            var len: usize = 0;
+            while (len < 256 and lfn.buf[len] != 0) : (len += 1) {}
+            common.printZ(lfn.buf[0..len]);
+            printed = len;
+        } else {
+            // Print 8.3 Short Name
+            const case_bits = buffer[i + 12];
+            const name_lower = (case_bits & 0x08) != 0;
+            const ext_lower = (case_bits & 0x10) != 0;
+            
+            for (0..8) |j| {
+                const c = buffer[i + j];
+                if (c == ' ') break;
+                common.print_char(if (name_lower and c >= 'A' and c <= 'Z') c + 32 else c);
                 printed += 1;
+            }
+            if (buffer[i + 8] != ' ' and buffer[i + 8] != 0) {
+                common.print_char('.');
+                printed += 1;
+                for (0..3) |j| {
+                    const c = buffer[i + 8 + j];
+                    if (c == ' ' or c == 0) break;
+                    common.print_char(if (ext_lower and c >= 'A' and c <= 'Z') c + 32 else c);
+                    printed += 1;
+                }
             }
         }
 
         // Padding
-        while (printed < 15) : (printed += 1) common.print_char(' ');
+        if (printed < 30) {
+             const pad = 30 - printed;
+             for (0..pad) |_| common.print_char(' ');
+        } else {
+             common.print_char(' ');
+        }
 
         if (!is_dir) {
             const size = @as(u32, buffer[i + 28]) | (@as(u32, buffer[i + 29]) << 8) | (@as(u32, buffer[i + 30]) << 16) | (@as(u32, buffer[i + 31]) << 24);
-            common.printZ("  ");
             common.printNum(@intCast(size));
             common.printZ(" bytes");
         }
@@ -346,8 +429,10 @@ fn fat_parse_name(name: []const u8) FatName {
 fn find_entry_in_sectors(drive: ata.Drive, name: []const u8, start_sector: u32, end_sector: u32) ?EntryLocation {
     var buffer: [512]u8 = undefined;
     const parts = fat_parse_name(name);
-    const name_part = parts.name;
-    const ext_part = parts.ext;
+    const sn_name = parts.name;
+    const sn_ext = parts.ext;
+
+    var lfn: LfnState = .{ .buf = [_]u8{0} ** 256, .active = false, .checksum = 0 };
 
     var sector = start_sector;
     while (sector < end_sector) : (sector += 1) {
@@ -355,16 +440,71 @@ fn find_entry_in_sectors(drive: ata.Drive, name: []const u8, start_sector: u32, 
         var i: u32 = 0;
         while (i < 512) : (i += 32) {
             if (buffer[i] == 0) return null;
-            if (buffer[i] == 0xE5) continue;
+            if (buffer[i] == 0xE5) {
+                lfn.active = false;
+                continue;
+            }
             
+            // LFN Entry
+            if (buffer[i + 11] == 0x0F) {
+                const seq = buffer[i];
+                const chk = buffer[i + 13];
+                
+                if ((seq & 0x40) != 0) {
+                     lfn.active = true;
+                     lfn.checksum = chk;
+                     @memset(&lfn.buf, 0);
+                } else if (!lfn.active or lfn.checksum != chk) {
+                     lfn.active = false;
+                     continue;
+                }
+                
+                var index = (seq & 0x1F);
+                if (index < 1) index = 1;
+                const offset = (index - 1) * 13;
+                
+                if (offset < 240) {
+                    extract_lfn_part(&buffer, i + 1, 5, &lfn.buf, offset);
+                    extract_lfn_part(&buffer, i + 14, 6, &lfn.buf, offset + 5);
+                    extract_lfn_part(&buffer, i + 28, 2, &lfn.buf, offset + 11);
+                }
+                continue;
+            }
+
+            // Regular Entry
+            // 1. Check LFN Match
+            var lfn_match = false;
+            
+            var sum: u8 = 0;
+            for (0..11) |k| {
+                const is_odd = (sum & 1) != 0;
+                sum = (sum >> 1) + (if (is_odd) @as(u8, 0x80) else 0);
+                sum = sum +% buffer[i+k];
+            }
+            
+            if (lfn.active and lfn.checksum == sum) {
+                // Check LFN
+                var len: usize = 0;
+                while (len < 256 and lfn.buf[len] != 0) : (len += 1) {}
+                const lfn_str = lfn.buf[0..len];
+                
+                if (common.std_mem_eql(lfn_str, name)) {
+                    lfn_match = true;
+                }
+            }
+            lfn.active = false; // Reset LFN
+            
+            if (lfn_match) return EntryLocation{ .sector = sector, .offset = i };
+            
+            // 2. Check Short Name Match
             var match = true;
             for (0..8) |j| {
-                const c = if (j < name_part.len) toUpper(name_part[j]) else ' ';
+                const c = if (j < sn_name.len) toUpper(sn_name[j]) else ' ';
                 if (buffer[i + j] != c) { match = false; break; }
             }
             if (match) {
                 for (0..3) |j| {
-                    const c = if (j < ext_part.len) toUpper(ext_part[j]) else ' ';
+                    const c = if (j < sn_ext.len) toUpper(sn_ext[j]) else ' ';
                     if (buffer[i + 8 + j] != c) { match = false; break; }
                 }
             }
@@ -915,32 +1055,108 @@ fn zero_sector(buf: *[512]u8) void {
     for (0..512) |i| buf[i] = 0;
 }
 
+const ATTR_LONG_NAME = 0x0F;
+
+fn check_needs_lfn(name: []const u8) bool {
+    if (name.len > 12) return true;
+    var dot_pos: ?usize = null;
+    for (name, 0..) |c, i| {
+        if (c == '.') {
+            if (dot_pos != null) return true;
+            if (i > 8) return true;
+            dot_pos = i;
+        } else {
+            if (c >= 'a' and c <= 'z') return true;
+            if (c == '+' or c == ',' or c == ';' or c == '=' or c == '[' or c == ']') return true;
+        }
+    }
+    if (dot_pos) |pos| {
+        if (name.len - pos - 1 > 3) return true;
+    } else {
+        if (name.len > 8) return true;
+    }
+    return false;
+}
+
+fn lfn_checksum(short_name: []const u8) u8 {
+    var sum: u8 = 0;
+    for (short_name) |c| {
+        const is_odd = (sum & 1) != 0;
+        sum = (sum >> 1) + (if (is_odd) @as(u8, 0x80) else 0);
+        sum = sum +% c;
+    }
+    return sum;
+}
+
+fn generate_short_alias(name: []const u8, out: *[11]u8) void {
+    @memset(out, ' ');
+    var out_idx: usize = 0;
+    var i: usize = 0;
+    while (i < name.len and out_idx < 6) {
+        const c = name[i];
+        if (c == '.') break;
+        if (c != ' ') {
+            out[out_idx] = toUpper(c);
+            out_idx += 1;
+        }
+        i += 1;
+    }
+    out[6] = '~'; out[7] = '1';
+    while (i < name.len and name[i] != '.') : (i += 1) {}
+    if (i < name.len) {
+        i += 1;
+        var ext_idx: usize = 8;
+        while (i < name.len and ext_idx < 11) : (i += 1) {
+            if (name[i] != ' ') {
+                out[ext_idx] = toUpper(name[i]);
+                ext_idx += 1;
+            }
+        }
+    }
+}
+
 fn add_directory_entry(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8, cluster: u32, size: u32, attr: u8) bool {
+    var short_name: [11]u8 = undefined;
+    const needs_alias = check_needs_lfn(name);
+    
+    if (needs_alias) {
+        generate_short_alias(name, &short_name);
+    } else {
+        const parts = fat_parse_name(name);
+        @memset(&short_name, ' ');
+        for (0..@min(parts.name.len, 8)) |j| short_name[j] = toUpper(parts.name[j]);
+        for (0..@min(parts.ext.len, 3)) |j| short_name[8+j] = toUpper(parts.ext[j]);
+    }
+
+    const slots_needed = if (needs_alias) (name.len + 12) / 13 + 1 else 1;
+
     if (dir_cluster == 0) {
-        return add_root_entry_internal(drive, bpb, name, cluster, size, attr);
+        var sector = bpb.first_root_dir_sector;
+        while (sector < bpb.first_data_sector) : (sector += 1) {
+            if (try_add_entry_to_sector(drive, sector, name, &short_name, cluster, size, attr, slots_needed, needs_alias)) return true;
+        }
+        return false;
     }
 
     var current = dir_cluster;
     const eof_val = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
-    const fat_eof = if (bpb.fat_type == .FAT12) @as(u32, 0xFFF) else @as(u32, 0xFFFF);
-
+    
     while (current < eof_val) {
         const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
         var s: u32 = 0;
         while (s < bpb.sectors_per_cluster) : (s += 1) {
-            if (add_entry_to_sector(drive, lba + s, name, cluster, size, attr)) return true;
+            if (try_add_entry_to_sector(drive, lba + s, name, &short_name, cluster, size, attr, slots_needed, needs_alias)) return true;
         }
         
-        // No space in current cluster, get next
         var next = get_fat_entry(drive, bpb, current);
         if (next >= eof_val) {
-            // Need to allocate new cluster for directory
+            // Allocate new cluster
             next = find_free_cluster(drive, bpb) orelse return false;
             set_fat_entry(drive, bpb, current, next);
-            set_fat_entry(drive, bpb, next, fat_eof);
+            set_fat_entry(drive, bpb, next, if (bpb.fat_type == .FAT12) 0xFFF else 0xFFFF);
             
-            // Zero the new cluster
-            var buffer: [512]u8 = [_]u8{0} ** 512;
+            // Zero new cluster
+             var buffer: [512]u8 = [_]u8{0} ** 512;
             const new_lba = bpb.first_data_sector + (next - 2) * bpb.sectors_per_cluster;
             var j: u32 = 0;
             while (j < bpb.sectors_per_cluster) : (j += 1) {
@@ -952,50 +1168,120 @@ fn add_directory_entry(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []con
     return false;
 }
 
-fn add_entry_to_sector(drive: ata.Drive, sector: u32, name: []const u8, cluster: u32, size: u32, attr: u8) bool {
+fn try_add_entry_to_sector(drive: ata.Drive, sector: u32, name: []const u8, short_name: *[11]u8, cluster: u32, size: u32, attr: u8, slots: usize, use_lfn: bool) bool {
     var buffer: [512]u8 = undefined;
     ata.read_sector(drive, sector, &buffer);
-    var i: u32 = 0;
+    
+    // Find consecutive free slots
+    var free_count: usize = 0;
+    var start_index: usize = 0;
+    
+    var i: usize = 0;
     while (i < 512) : (i += 32) {
         if (buffer[i] == 0 or buffer[i] == 0xE5) {
-            // Free slot
-            const parts = fat_parse_name(name);
-            const case_bits: u8 = 0;
-            
-            // Name
-            for (0..8) |j| buffer[i + j] = ' ';
-            for (0..@min(parts.name.len, 8)) |j| buffer[i + j] = toUpper(parts.name[j]);
-            
-            // Ext
-            for (0..3) |j| buffer[i + 8 + j] = ' ';
-            for (0..@min(parts.ext.len, 3)) |j| buffer[i + 8 + j] = toUpper(parts.ext[j]);
-            
-            buffer[i + 11] = attr;
-            buffer[i + 12] = case_bits;
-            
-            // Cluster
-            buffer[i + 26] = @intCast(cluster & 0xFF);
-            buffer[i + 27] = @intCast(cluster >> 8);
-            
-            // Size
-            buffer[i + 28] = @intCast(size & 0xFF);
-            buffer[i + 29] = @intCast((size >> 8) & 0xFF);
-            buffer[i + 30] = @intCast((size >> 16) & 0xFF);
-            buffer[i + 31] = @intCast((size >> 24) & 0xFF);
-            
-            ata.write_sector(drive, sector, &buffer);
-            return true;
+            if (free_count == 0) start_index = i;
+            free_count += 1;
+            if (free_count == slots) {
+                // Found enough space! Write entries.
+                
+                if (use_lfn) {
+                    const lfn_count = slots - 1;
+                    const chk = lfn_checksum(short_name);
+                    
+                    var entry_idx: usize = 0;
+                    // Write LFN parts in reverse order (Last part first)
+                    // But physical order is: LFN N, LFN N-1, ..., LFN 1, Short
+                    // start_index is LFN N.
+                    
+                    while (entry_idx < lfn_count) : (entry_idx += 1) {
+                        const lfn_seq = lfn_count - entry_idx;
+                        const offset = start_index + (entry_idx * 32);
+                        
+                        // Clear entry
+                        for (0..32) |k| buffer[offset + k] = 0;
+                        
+                        // Seq number
+                        buffer[offset] = @intCast(lfn_seq | (if (entry_idx == 0) @as(u8, 0x40) else 0));
+                        buffer[offset + 11] = ATTR_LONG_NAME;
+                        buffer[offset + 12] = 0;
+                        buffer[offset + 13] = chk;
+                        buffer[offset + 26] = 0;
+                        buffer[offset + 27] = 0;
+                        
+                        // Chars
+                        const char_offset = (lfn_seq - 1) * 13;
+                        write_lfn_chars(&buffer, offset, name, char_offset);
+                    }
+                    
+                    // Write Short Entry at end
+                     write_short_entry(&buffer, start_index + (lfn_count * 32), short_name, cluster, size, attr);
+                    
+                } else {
+                    write_short_entry(&buffer, start_index, short_name, cluster, size, attr);
+                }
+                
+                ata.write_sector(drive, sector, &buffer);
+                return true;
+            }
+        } else {
+            free_count = 0;
         }
     }
     return false;
 }
 
-fn add_root_entry_internal(drive: ata.Drive, bpb: BPB, name: []const u8, cluster: u32, size: u32, attr: u8) bool {
-    var sector = bpb.first_root_dir_sector;
-    while (sector < bpb.first_data_sector) : (sector += 1) {
-        if (add_entry_to_sector(drive, sector, name, cluster, size, attr)) return true;
+fn write_lfn_chars(buffer: *[512]u8, offset: usize, name: []const u8, start_char: usize) void {
+    // Fill 13 chars (26 bytes) at offsets: 1, 14, 28
+    // Name1: 5 chars -> 1..10
+    // Name2: 6 chars -> 14..25
+    // Name3: 2 chars -> 28..31
+    
+    var char_idx: usize = 0;
+    
+    // Part 1 (5 chars)
+    for (0..5) |j| {
+        write_lfn_char(buffer, offset + 1 + j*2, name, start_char + char_idx);
+        char_idx += 1;
     }
-    return false;
+    // Part 2 (6 chars)
+    for (0..6) |j| {
+        write_lfn_char(buffer, offset + 14 + j*2, name, start_char + char_idx);
+        char_idx += 1;
+    }
+    // Part 3 (2 chars)
+    for (0..2) |j| {
+        write_lfn_char(buffer, offset + 28 + j*2, name, start_char + char_idx);
+        char_idx += 1;
+    }
+}
+
+fn write_lfn_char(buffer: *[512]u8, buf_offset: usize, name: []const u8, name_idx: usize) void {
+    if (name_idx < name.len) {
+        buffer[buf_offset] = name[name_idx];
+        buffer[buf_offset + 1] = 0;
+    } else if (name_idx == name.len) {
+        buffer[buf_offset] = 0; // Null term
+        buffer[buf_offset + 1] = 0;
+    } else {
+        buffer[buf_offset] = 0xFF; // Padding
+        buffer[buf_offset + 1] = 0xFF;
+    }
+}
+
+fn write_short_entry(buffer: *[512]u8, offset: usize, short_name: *[11]u8, cluster: u32, size: u32, attr: u8) void {
+    common.copy(buffer[offset..], short_name);
+    buffer[offset + 11] = attr;
+    buffer[offset + 12] = 0;
+    
+    // Time/Date (Zero for now)
+    for (13..26) |k| buffer[offset + k] = 0;
+
+    buffer[offset + 26] = @intCast(cluster & 0xFF);
+    buffer[offset + 27] = @intCast(cluster >> 8);
+    buffer[offset + 28] = @intCast(size & 0xFF);
+    buffer[offset + 29] = @intCast((size >> 8) & 0xFF);
+    buffer[offset + 30] = @intCast((size >> 16) & 0xFF);
+    buffer[offset + 31] = @intCast((size >> 24) & 0xFF);
 }
 
 fn toUpper(c: u8) u8 {

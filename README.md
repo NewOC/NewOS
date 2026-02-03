@@ -20,16 +20,17 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 - ✅ **VGA Text Driver** - Screen output with automatic scrolling and history
 - ✅ **Keyboard Driver** - Full keyboard input support with interrupts (Shift, CAPS, NUM)
 - ✅ **Command Shell** - Interactive console with **Tab Autocomplete**, **Command History** (persisted to disk), and cycling matches
-- ✅ **FAT12/16 Support** - Native disk support for ATA drives
-- ✅ **Nova Language v0.10.5** - Integrated custom interpreter with history, autocomplete, math, and script support
-- ✅ **Embedded Scripts** - Built-in commands written in Nova (`syscheck`, `hello`, `install`)
+- ✅ **FAT12/16 Support** - Native disk support for ATA drives with **Long File Name (LFN)** and **Hidden Files** support
+- ✅ **Nova Language v0.12** - Integrated custom interpreter with history, autocomplete, math, and script support
+- ✅ **Embedded Scripts** - Built-in commands written in Nova (`syscheck`, `hello`)
+- ✅ **Native Commands** - Native implementation of `install` and `uninstall` for Nova scripts
 - ✅ **Recursive FS** - `cp` and `delete` now support recursive directory operations
 
 ### Building and Running
 
 **Requirements:**
 - NASM assembler
-- Zig compiler (latest)
+- Zig compiler (v0.12+)
 - QEMU emulator
 
 **Build:**
@@ -53,16 +54,21 @@ qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,fil
 - `time`           - Show current date and time
 - `reboot`         - Reboot system
 - `shutdown`       - Shutdown system (ACPI support)
-- `ls`, `lsdsk`    - List files and disks
+- `ls`, `la`        - List files (la shows hidden files)
+- `lsdsk`          - List storage devices and partitions
 - `mount <d>`      - Select active disk (0/1 or ram)
-- `touch <file>`   - Create file on disk/RAM
-- `mkdir <dir>`    - Create directory
+- `touch <file>`   - Create file on disk (Supports LFN)
+- `mkdir <dir>`    - Create directory (Supports LFN)
 - `cp <src> <dst>` - Copy file or **folder recursively**
 - `mv <src> <dst>` - Move or rename file/folder
 - `cat <file>`     - Show file contents
 - `edit <file>`    - Open built-in text editor
 - `rm <file>`      - Delete file/folder (recursive support)
 - `history`        - Show command history
+- `mkfs-fat12`     - Format disk with FAT12 filesystem
+- `mkfs-fat16`     - Format disk with FAT16 filesystem
+- `install`        - Install a Nova script as a system command
+- `uninstall`      - Remove an installed Nova command
 - `mem`            - Test memory allocator
 
 ### Nova Language
@@ -75,7 +81,7 @@ A custom interpreted language built into NewOS. Now featuring **Command History*
 - Filesystem: `create_file`, `write_file`, `mkdir`, `delete`, `copy`, `rename`, `read`
 - Interactive: `input()` for reading user input
 - System: `reboot();`, `shutdown();`, `exit();`
-- Scripting: `argc()`, `args(n)`, `install("script.nv")`
+- Scripting: `argc()`, `args(n)`
 
 ### Architecture
 
@@ -95,24 +101,25 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 - System timer (PIT) and Real-Time Clock (RTC)
 - VGA text mode driver (0xb8000)
 - Keyboard driver (IRQ1 based)
-- Command shell with persistent history and autocomplete
+- Command shell with persistent history (hidden `.HISTORY`) and LFN autocomplete
 - Integrated Nova Interpreter
 
 ### Roadmap
 
-#### Current progress (v0.10.1)
+#### Current progress (v0.13)
 - [x] IDT (Interrupt Descriptor Table)
 - [x] Timer (PIT) & Precise Sleep
 - [x] RTC Driver (Date/Time)
 - [x] Keyboard Interrupts (Extended keys, Shift/Caps/Num)
-- [x] Command Shell with **Tab Autocomplete**
-- [x] Persistent command history on disk
-- [x] FAT12/FAT16 file system (Real disk support)
+- [x] Command Shell with **LFN Tab Autocomplete**
+- [x] Persistent command history on disk (Hidden `.HISTORY`)
+- [x] FAT12/FAT16 file system with **LFN and Hidden Files**
 - [x] Recursive Directory Operations (cp, rm)
 - [x] Built-in Text Editor (`edit`)
 - [x] Dynamic Shell Commands table
-- [x] Nova Language v0.10 (History, Autocomplete, Sci-Math, Scripts)
-- [x] Embedded Nova Commands (syscheck, install)
+- [x] Nova Language v0.12 (History, Autocomplete, Sci-Math, Scripts)
+- [x] Native script management (install, uninstall)
+- [x] File Management improvements (LFN create/read/delete)
 
 #### Future improvements
 - [x] Heap Memory Allocator (kmalloc/kfree) - *Basic implementation done*
