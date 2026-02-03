@@ -1045,7 +1045,7 @@ fn append_to_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []
 
     const start_cluster = entry.first_cluster_low | (@as(u32, entry.first_cluster_high) << 16);
     const old_size = entry.file_size;
-    const bytes_per_cluster = bpb.sectors_per_cluster * 512;
+    const bytes_per_cluster = @as(u32, bpb.sectors_per_cluster) * 512;
 
     var current_cluster = get_last_cluster(drive, bpb, start_cluster);
     var bytes_written: u32 = 0;
