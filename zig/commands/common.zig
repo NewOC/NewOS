@@ -160,6 +160,20 @@ pub fn startsWith(a: []const u8, b: []const u8) bool {
     return std_mem_eql(a[0..b.len], b);
 }
 
+pub fn endsWith(a: []const u8, b: []const u8) bool {
+    if (a.len < b.len) return false;
+    return std_mem_eql(a[a.len - b.len..], b);
+}
+
+pub fn lastIndexOf(slice: []const u8, c: u8) ?usize {
+    var i: usize = slice.len;
+    while (i > 0) {
+        i -= 1;
+        if (slice[i] == c) return i;
+    }
+    return null;
+}
+
 /// Simple indexOf for memory slices
 pub fn std_mem_indexOf(comptime T: type, slice: []const T, sub: []const T) ?usize {
     if (sub.len == 0) return 0;

@@ -692,7 +692,7 @@ fn delete_directory_literal(drive: ata.Drive, bpb: BPB, parent_cluster: u32, nam
     }
 
     // 1. Delete all contents
-    delete_all_in_directory(drive, bpb, cluster, recursive, true);
+    delete_all_in_directory(drive, bpb, cluster, recursive, true, "");
     
     // 2. Delete the entry
     return delete_file_literal(drive, bpb, parent_cluster, name);
@@ -733,13 +733,13 @@ pub fn is_directory_empty(drive: ata.Drive, bpb: BPB, dir_cluster: u32) bool {
     return true;
 }
 
-pub fn delete_all_in_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, recursive: bool, delete_subdirs: bool) void {
+pub fn delete_all_in_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, recursive: bool, delete_subdirs: bool, prefix: []const u8) void {
     var buffer: [512]u8 = undefined;
     if (dir_cluster == 0) {
         var sector = bpb.first_root_dir_sector;
         while (sector < bpb.first_data_sector) : (sector += 1) {
             ata.read_sector(drive, sector, &buffer);
-            delete_all_in_sector(drive, bpb, sector, &buffer, recursive, delete_subdirs);
+            delete_all_in_sector(drive, bpb, sector, &buffer, recursive, delete_subdirs, prefix);
         }
     } else {
         var current = dir_cluster;
@@ -749,7 +749,7 @@ pub fn delete_all_in_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, rec
             var s: u32 = 0;
             while (s < bpb.sectors_per_cluster) : (s += 1) {
                 ata.read_sector(drive, lba + s, &buffer);
-                delete_all_in_sector(drive, bpb, lba + s, &buffer, recursive, delete_subdirs);
+                delete_all_in_sector(drive, bpb, lba + s, &buffer, recursive, delete_subdirs, prefix);
             }
             current = get_fat_entry(drive, bpb, current);
             if (current == 0) break;
@@ -757,17 +757,62 @@ pub fn delete_all_in_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, rec
     }
 }
 
-fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u8, recursive: bool, delete_subdirs: bool) void {
+fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u8, recursive: bool, delete_subdirs: bool, prefix: []const u8) void {
+    var lfn: LfnState = .{ .buf = [_]u8{0} ** 256, .active = false, .checksum = 0 };
     var i: u32 = 0;
     var changed = false;
     while (i < 512) : (i += 32) {
         if (buffer[i] == 0) break;
-        if (buffer[i] == 0xE5) continue;
-        if (buffer[i + 11] == 0x0F) continue; // LFN
+        if (buffer[i] == 0xE5) {
+            lfn.active = false;
+            continue;
+        }
 
-        const name = get_name_from_raw(buffer[i..i+32]);
-        const n = name.buf[0..name.len];
-        if (common.std_mem_eql(n, ".") or common.std_mem_eql(n, "..")) continue;
+        if (buffer[i + 11] == 0x0F) {
+            const seq = buffer[i];
+            const chk = buffer[i + 13];
+            if ((seq & 0x40) != 0) {
+                 lfn.active = true;
+                 lfn.checksum = chk;
+                 @memset(&lfn.buf, 0);
+            } else if (!lfn.active or lfn.checksum != chk) {
+                 lfn.active = false;
+                 continue;
+            }
+            var index = (seq & 0x1F);
+            if (index < 1) index = 1;
+            const offset = (index - 1) * 13;
+            if (offset < 240) {
+                extract_lfn_part(buffer, i + 1, 5, &lfn.buf, offset);
+                extract_lfn_part(buffer, i + 14, 6, &lfn.buf, offset + 5);
+                extract_lfn_part(buffer, i + 28, 2, &lfn.buf, offset + 11);
+            }
+            continue;
+        }
+
+        var sum: u8 = 0;
+        for (0..11) |k| {
+            const is_odd = (sum & 1) != 0;
+            sum = (sum >> 1) + (if (is_odd) @as(u8, 0x80) else 0);
+            sum = sum +% buffer[i+k];
+        }
+
+        var name_str: []const u8 = undefined;
+        if (lfn.active and lfn.checksum == sum) {
+             var len: usize = 0;
+             while (len < 256 and lfn.buf[len] != 0) : (len += 1) {}
+             name_str = lfn.buf[0..len];
+        } else {
+             const sn = get_name_from_raw(buffer[i..i+32]);
+             name_str = sn.buf[0..sn.len];
+        }
+        lfn.active = false;
+
+        if (common.std_mem_eql(name_str, ".") or common.std_mem_eql(name_str, "..")) continue;
+
+        if (prefix.len > 0) {
+            if (!common.startsWith(name_str, prefix)) continue;
+        }
 
         const is_dir = (buffer[i + 11] & 0x10) != 0;
         const cluster = @as(u32, buffer[i + 26]) | (@as(u32, buffer[i + 27]) << 8);
@@ -775,11 +820,11 @@ fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u
         if (is_dir) {
             if (delete_subdirs) {
                 if (recursive) {
-                    delete_all_in_directory(drive, bpb, cluster, true, true);
+                    delete_all_in_directory(drive, bpb, cluster, true, true, "");
                 } else {
                     if (!is_directory_empty(drive, bpb, cluster)) {
                         common.printZ("Skipping non-empty directory: ");
-                        common.printZ(n);
+                        common.printZ(name_str);
                         common.printZ(" (use -r)\n");
                         continue;
                     }
@@ -800,7 +845,7 @@ fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u
                 changed = true;
             } else {
                 common.printZ("Skipping directory: ");
-                common.printZ(n);
+                common.printZ(name_str);
                 common.printZ(" (use -d)\n");
             }
         } else {

@@ -206,12 +206,86 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
 
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     if (fat.read_bpb(drive)) |bpb| {
+        var prefix: []const u8 = "";
+        var is_wildcard = false;
+        var wildcard_dir_path: []const u8 = "";
+
         if (common.std_mem_eql(target, "*")) {
-            fat.delete_all_in_directory(drive, bpb, common.current_dir_cluster, recursive, delete_dirs);
-            common.printZ("Target contents deleted.\n");
+            is_wildcard = true;
+            wildcard_dir_path = ".";
+            prefix = "";
+        } else if (common.std_mem_eql(target, ".*")) {
+            is_wildcard = true;
+            wildcard_dir_path = ".";
+            prefix = ".";
+        } else if (common.endsWith(target, "/*")) {
+            is_wildcard = true;
+            wildcard_dir_path = target[0..target.len - 2];
+            if (wildcard_dir_path.len == 0) wildcard_dir_path = "/";
+            prefix = "";
+        } else if (common.endsWith(target, "/.*")) {
+            is_wildcard = true;
+            wildcard_dir_path = target[0..target.len - 3];
+            if (wildcard_dir_path.len == 0) wildcard_dir_path = "/";
+            prefix = ".";
+        }
+
+        if (is_wildcard) {
+            if (prefix.len == 0 and (!recursive or !delete_dirs or !sure)) {
+                common.printZ("Are you sure? I worked so hard on these files...\n");
+                common.printZ("To delete EVERYTHING in '");
+                common.printZ(wildcard_dir_path);
+                common.printZ("' (files & folders), use: rm -dr ");
+                common.printZ(target);
+                common.printZ(" --yes-i-am-sure\n");
+                return;
+            }
+
+            if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], wildcard_dir_path)) |res| {
+                if (res.is_dir) {
+                    fat.delete_all_in_directory(drive, bpb, res.cluster, recursive, delete_dirs, prefix);
+                    common.printZ("Target contents deleted.\n");
+                } else {
+                    common.printZ("Error: Not a directory: ");
+                    common.printZ(wildcard_dir_path);
+                    common.printZ("\n");
+                }
+            } else {
+                common.printZ("Error: Directory not found: ");
+                common.printZ(wildcard_dir_path);
+                common.printZ("\n");
+            }
         } else {
+            // Handle single target (can be a path)
+            var parent_cluster = common.current_dir_cluster;
+            var final_name = target;
+
+            if (common.lastIndexOf(target, '/')) |idx| {
+                const parent_path = if (idx == 0) "/" else target[0..idx];
+                final_name = target[idx+1..];
+                if (final_name.len == 0) {
+                     common.printZ("Error: Invalid target name\n");
+                     return;
+                }
+                if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], parent_path)) |res| {
+                    if (res.is_dir) {
+                        parent_cluster = res.cluster;
+                    } else {
+                        common.printZ("Error: Not a directory: ");
+                        common.printZ(parent_path);
+                        common.printZ("\n");
+                        return;
+                    }
+                } else {
+                    common.printZ("Error: Parent path not found: ");
+                    common.printZ(parent_path);
+                    common.printZ("\n");
+                    return;
+                }
+            }
+
             if (recursive or delete_dirs) {
-                if (fat.delete_directory(drive, bpb, common.current_dir_cluster, target, recursive)) {
+                if (fat.delete_directory(drive, bpb, parent_cluster, final_name, recursive)) {
                     common.printZ("Deleted: ");
                     common.printZ(target);
                     common.printZ("\n");
@@ -220,14 +294,14 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
                 }
             } else {
                 // Check if it's a directory before deleting as file
-                if (fat.find_entry(drive, bpb, common.current_dir_cluster, target)) |entry| {
+                if (fat.find_entry(drive, bpb, parent_cluster, final_name)) |entry| {
                     if ((entry.attr & 0x10) != 0) {
                         common.printZ("Error: Target is a directory (use -d)\n");
                         return;
                     }
                 }
                 
-                if (fat.delete_file(drive, bpb, common.current_dir_cluster, target)) {
+                if (fat.delete_file(drive, bpb, parent_cluster, final_name)) {
                     common.printZ("Deleted: ");
                     common.printZ(target);
                     common.printZ("\n");
