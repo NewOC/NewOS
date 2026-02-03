@@ -29,6 +29,34 @@ pub fn serial_getchar() u8 {
     return inb(PORT);
 }
 
+pub fn serial_clear_screen() void {
+    serial_print_str("\x1B[2J\x1B[H");
+}
+
+pub fn serial_set_cursor(row: u8, col: u8) void {
+    var buf: [32]u8 = undefined;
+    const str = common.fmt_to_buf(&buf, "\x1B[{d};{d}H", .{ @as(u32, row) + 1, @as(u32, col) + 1 });
+    serial_print_str(str);
+}
+
+pub fn serial_set_color(fg: u8) void {
+    // Basic ANSI colors (30-37)
+    var buf: [16]u8 = undefined;
+    const ansi_color = switch (fg & 0x07) {
+        0 => @as(u32, 30), // Black
+        1 => 34, // Blue
+        2 => 32, // Green
+        3 => 36, // Cyan
+        4 => 31, // Red
+        5 => 35, // Magenta
+        6 => 33, // Yellow
+        7 => 37, // White
+        else => 37,
+    };
+    const str = common.fmt_to_buf(&buf, "\x1B[{d}m", .{ansi_color});
+    serial_print_str(str);
+}
+
 fn outb(port: u16, val: u8) void {
     asm volatile ("outb %[val], %[port]" 
         : 

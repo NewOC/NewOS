@@ -574,5 +574,4 @@ fn moveScreenCursor() void {
 fn executeLine() void {
     if (buf_len == 0) return;
     executeScript(buffer[0..buf_len]);
-    exit_flag = false;
 }
