@@ -329,17 +329,14 @@ fn refresh_line() void {
         }
     }
     
-    // 2. Serial Update (Terminal-friendly: \r + print whole line)
+    // 2. Serial Update
+    // We rely on move_screen_cursor() below to sync the serial cursor,
+    // but we still need to draw the line if it changed.
+    // For simple single-line terminals, we use the \r trick.
     serial.serial_print_char('\r');
     display_prompt_serial();
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
-    // Clear tail on serial (3 spaces is enough for small deltas)
     serial.serial_print_str("   "); 
-    
-    // 3. Move cursor back to position on serial (approximate)
-    serial.serial_print_char('\r');
-    display_prompt_serial();
-    serial.serial_print_str(cmd_buffer[0..saved_pos]);
 
     cmd_pos = saved_pos;
     move_screen_cursor();

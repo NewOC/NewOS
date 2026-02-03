@@ -541,9 +541,6 @@ fn refreshLine() void {
     serial.serial_print_str("nova> ");
     serial.serial_print_str(buffer[0..buf_len]);
     serial.serial_print_str("   ");
-    serial.serial_print_char('\r');
-    serial.serial_print_str("nova> ");
-    serial.serial_print_str(buffer[0..saved_pos]);
 
     buf_pos = saved_pos;
     moveScreenCursor();

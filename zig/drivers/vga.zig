@@ -128,6 +128,10 @@ fn update_hardware_cursor() void {
     outb(0x3D5, @intCast(pos & 0xFF));
     outb(0x3D4, 0x0E);
     outb(0x3D5, @intCast((pos >> 8) & 0xFF));
+
+    // Also sync serial cursor
+    const serial = @import("serial.zig");
+    serial.serial_set_cursor(cursor_row, cursor_col);
 }
 
 fn outb(port: u16, val: u8) void {
