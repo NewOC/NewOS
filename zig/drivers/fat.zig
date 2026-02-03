@@ -665,20 +665,13 @@ pub fn delete_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u
 }
 
 fn delete_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8) bool {
-    const loc = find_entry_location_literal(drive, bpb, dir_cluster, name) orelse return false;
+    const entry = find_entry_literal(drive, bpb, dir_cluster, name) orelse return false;
     
-    var buffer: [512]u8 = undefined;
-    ata.read_sector(drive, loc.sector, &buffer);
+    // 1. Mark entry as deleted
+    if (!mark_entry_deleted(drive, bpb, dir_cluster, name)) return false;
     
-    // 1. Get first cluster
-    const cluster = @as(u32, buffer[loc.offset + 26]) | (@as(u32, buffer[loc.offset + 27]) << 8);
-    
-    // 2. Mark entry as deleted (0xE5)
-    buffer[loc.offset] = 0xE5;
-    ata.write_sector(drive, loc.sector, &buffer);
-    
-    // 3. Free entire cluster chain
-    free_cluster_chain(drive, bpb, cluster);
+    // 2. Free entire cluster chain
+    free_cluster_chain(drive, bpb, entry.first_cluster_low);
     
     return true;
 }
@@ -791,6 +784,17 @@ fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u
                     }
                 }
                 free_cluster_chain(drive, bpb, cluster);
+
+                // Mark LFN entries as deleted
+                var k = i;
+                while (k >= 32) {
+                    k -= 32;
+                    if (buffer[k + 11] == 0x0F) {
+                        buffer[k] = 0xE5;
+                    } else {
+                        break;
+                    }
+                }
                 buffer[i] = 0xE5;
                 changed = true;
             } else {
@@ -800,6 +804,16 @@ fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u
             }
         } else {
             free_cluster_chain(drive, bpb, cluster);
+            // Mark LFN entries as deleted
+            var k = i;
+            while (k >= 32) {
+                k -= 32;
+                if (buffer[k + 11] == 0x0F) {
+                    buffer[k] = 0xE5;
+                } else {
+                    break;
+                }
+            }
             buffer[i] = 0xE5;
             changed = true;
         }
@@ -807,7 +821,29 @@ fn delete_all_in_sector(drive: ata.Drive, bpb: BPB, sector: u32, buffer: *[512]u
     if (changed) ata.write_sector(drive, sector, buffer);
 }
 
+fn mark_entry_deleted(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8) bool {
+    const loc = find_entry_location_literal(drive, bpb, dir_cluster, name) orelse return false;
 
+    var buffer: [512]u8 = undefined;
+    ata.read_sector(drive, loc.sector, &buffer);
+
+    // Mark 8.3 entry as deleted
+    buffer[loc.offset] = 0xE5;
+
+    // Clean up preceding LFN entries in the same sector
+    var i = loc.offset;
+    while (i >= 32) {
+        i -= 32;
+        if (buffer[i + 11] == 0x0F) {
+            buffer[i] = 0xE5;
+        } else {
+            break;
+        }
+    }
+
+    ata.write_sector(drive, loc.sector, &buffer);
+    return true;
+}
 
 pub fn copy_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, src_path: []const u8, dest_path: []const u8) bool {
     const src_res = resolve_path(drive, bpb, dir_cluster, src_path) orelse return false;
@@ -1420,56 +1456,30 @@ pub fn rename_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, old_path: []con
     // 1. Check if new name already exists
     if (find_entry_literal(drive, bpb, new_res.dir_cluster, new_res.file_name) != null) return false;
 
-    // 2. Find legacy file
-    const loc = find_entry_location_literal(drive, bpb, old_res.dir_cluster, old_res.file_name) orelse return false;
+    // 2. Find entry to rename
+    const entry = find_entry_literal(drive, bpb, old_res.dir_cluster, old_res.file_name) orelse return false;
 
-    // 3. Update entry
-    var buffer: [512]u8 = undefined;
-    ata.read_sector(drive, loc.sector, &buffer);
+    // 3. Create new entry (LFN supported)
+    if (!add_directory_entry(drive, bpb, new_res.dir_cluster, new_res.file_name, entry.first_cluster_low, entry.file_size, entry.attr)) return false;
 
-    const i = loc.offset;
-    
-    // Parse new name
-    const parts = fat_parse_name(new_res.file_name);
-    const name_part = parts.name;
-    const ext_part = parts.ext;
+    // 4. Delete old entry (including LFNs)
+    if (!mark_entry_deleted(drive, bpb, old_res.dir_cluster, old_res.file_name)) return false;
 
-    // Determine case
-    var case_bits: u8 = 0;
-    var all_lower = true;
-    var all_upper = true;
-
-    for (name_part) |c| {
-        if (c >= 'a' and c <= 'z') all_upper = false;
-        if (c >= 'A' and c <= 'Z') all_lower = false;
+    // 5. If it's a directory and parent changed, update ".." entry
+    if ((entry.attr & 0x10) != 0 and new_res.dir_cluster != old_res.dir_cluster) {
+        const dir_cluster_id = entry.first_cluster_low;
+        if (dir_cluster_id != 0) {
+            const lba = bpb.first_data_sector + (dir_cluster_id - 2) * bpb.sectors_per_cluster;
+            var dir_buf: [512]u8 = undefined;
+            ata.read_sector(drive, lba, &dir_buf);
+            if (dir_buf[32] == '.' and dir_buf[33] == '.') {
+                dir_buf[32 + 26] = @intCast(new_res.dir_cluster & 0xFF);
+                dir_buf[32 + 27] = @intCast(new_res.dir_cluster >> 8);
+                ata.write_sector(drive, lba, &dir_buf);
+            }
+        }
     }
-    if (all_lower) case_bits |= 0x08;
 
-    // Clear name fields
-    for (0..8) |j| buffer[i + j] = ' ';
-    for (0..3) |j| buffer[i + 8 + j] = ' ';
-
-    // Write Name
-    for (0..@min(name_part.len, 8)) |j| buffer[i + j] = toUpper(name_part[j]);
-    
-    // Write Ext
-    all_lower = true;
-    all_upper = true;
-    for (ext_part) |c| {
-        if (c >= 'a' and c <= 'z') all_upper = false;
-        if (c >= 'A' and c <= 'Z') all_lower = false;
-    }
-    if (all_lower) case_bits |= 0x10;
-
-    for (0..@min(ext_part.len, 3)) |j| buffer[i + 8 + j] = toUpper(ext_part[j]);
-
-    // For now, let's just support rename in place.
-    if (old_res.dir_cluster != new_res.dir_cluster) return false;
-
-    // Update case bits
-    buffer[i + 12] = case_bits;
-
-    ata.write_sector(drive, loc.sector, &buffer);
     return true;
 }
 

@@ -760,10 +760,30 @@ fn autocomplete() void {
 
     if (picked_len > 0) {
         cmd_len = auto_start_pos;
+
+        var needs_quotes = false;
+        for (picked_name_buf[0..picked_len]) |c| {
+            if (c == ' ') {
+                needs_quotes = true;
+                break;
+            }
+        }
+
+        if (needs_quotes) {
+            cmd_buffer[cmd_len] = '"';
+            cmd_len += 1;
+        }
+
         for (0..picked_len) |p| {
             cmd_buffer[cmd_len] = picked_name_buf[p];
             cmd_len += 1;
         }
+
+        if (needs_quotes) {
+            cmd_buffer[cmd_len] = '"';
+            cmd_len += 1;
+        }
+
         if (is_cmd) {
             cmd_buffer[cmd_len] = ' ';
             cmd_len += 1;
