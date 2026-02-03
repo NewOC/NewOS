@@ -36,9 +36,19 @@ pub const CmdType = enum {
 pub fn parseStatement(buffer: []const u8, start: usize) Statement {
     var pos = start;
     
-    // Skip leading spaces
-    while (pos < buffer.len and buffer[pos] == ' ') {
-        pos += 1;
+    // Skip leading spaces, newlines, tabs, and comments
+    while (pos < buffer.len) {
+        if (buffer[pos] == ' ' or buffer[pos] == '\t' or buffer[pos] == '\n' or buffer[pos] == '\r') {
+            pos += 1;
+            continue;
+        }
+        if (pos + 1 < buffer.len and buffer[pos] == '/' and buffer[pos+1] == '/') {
+             while (pos < buffer.len and buffer[pos] != '\n') {
+                 pos += 1;
+             }
+             continue;
+        }
+        break;
     }
     
     // End of buffer

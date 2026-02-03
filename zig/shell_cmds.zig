@@ -50,19 +50,35 @@ pub export fn cmd_mkfs(args_ptr: [*]const u8, args_len: u32) void {
 
 /// Execute 'ls' command
 pub export fn cmd_ls(args_ptr: [*]const u8, args_len: u32) void {
+    const raw_args = args_ptr[0..args_len];
+    
+    // Parse -a flag
+    var show_hidden = false;
+    var args = raw_args;
+    
+    if (raw_args.len >= 2 and raw_args[0] == '-' and raw_args[1] == 'a') {
+        show_hidden = true;
+        if (raw_args.len > 2) {
+            var start: usize = 2;
+            while (start < raw_args.len and raw_args[start] == ' ') : (start += 1) {}
+            args = raw_args[start..];
+        } else {
+            args = "";
+        }
+    }
+
     if (common.selected_disk < 0) {
         ls.execute();
     } else {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            const args = args_ptr[0..args_len];
             if (args.len == 0) {
-                fat.list_directory(drive, bpb, common.current_dir_cluster);
+                fat.list_directory(drive, bpb, common.current_dir_cluster, show_hidden);
             } else {
                 if (fat.resolve_path(drive, bpb, common.current_dir_cluster, args)) |res| {
                     if (fat.find_entry_literal(drive, bpb, res.dir_cluster, res.file_name)) |entry| {
                         if ((entry.attr & 0x10) != 0) {
-                            fat.list_directory(drive, bpb, entry.first_cluster_low);
+                            fat.list_directory(drive, bpb, entry.first_cluster_low, show_hidden);
                         } else {
                             common.printZ("Error: Not a directory\n");
                         }

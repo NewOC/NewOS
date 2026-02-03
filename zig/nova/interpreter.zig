@@ -99,7 +99,7 @@ pub fn start(script_path: ?[]const u8) void {
     }
 }
 
-fn runScript(path: []const u8) void {
+pub fn runScript(path: []const u8) void {
     const drive = if (global_common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     if (global_common.selected_disk < 0) {
         common.printZ("Error: No disk mounted. Please use 'mount 0' first.\n");

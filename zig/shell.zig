@@ -21,7 +21,6 @@ const EmbeddedScript = struct {
 
 const BUILTIN_SCRIPTS = [_]EmbeddedScript{
     .{ .name = "hello", .source = @embedFile("nova/scripts/hello.nv") },
-    .{ .name = "install", .source = @embedFile("nova/scripts/install.nv") },
     .{ .name = "syscheck", .source = @embedFile("nova/scripts/syscheck.nv") },
 };
 
@@ -45,6 +44,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "reboot", .help = "Safely restart the system", .handler = cmd_handler_reboot },
     .{ .name = "shutdown", .help = "Safely turn off the system (ACPI)", .handler = cmd_handler_shutdown },
     .{ .name = "ls", .help = "List files/folders in current directory", .handler = cmd_handler_ls },
+    .{ .name = "la", .help = "List all files (including hidden)", .handler = cmd_handler_la },
     .{ .name = "lsdsk", .help = "List storage devices and partitions", .handler = cmd_handler_lsdsk },
     .{ .name = "mount", .help = "mount <0|1> - Select active drive", .handler = cmd_handler_mount },
     .{ .name = "mkdir", .help = "mkdir <name> - Create a new directory", .handler = cmd_handler_mkdir },
@@ -69,6 +69,8 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "ren", .help = "Alias for mv (rename file/folder)", .handler = cmd_handler_rename },
     .{ .name = "format", .help = "Low-level drive formatting tool", .handler = cmd_handler_format },
     .{ .name = "mkfs", .help = "Create filesystem on current drive", .handler = cmd_handler_mkfs },
+    .{ .name = "install", .help = "install <src> [name] - Install Nova script", .handler = cmd_handler_install },
+    .{ .name = "uninstall", .help = "uninstall <name> - Remove installed command", .handler = cmd_handler_uninstall },
 };
 
 // Local command buffer
@@ -236,7 +238,7 @@ fn save_history_to_disk() void {
             offset += 1;
         }
         
-        _ = fat.write_file(drive, bpb, 0, "HISTORY", join_buf[0..offset]);
+        _ = fat.write_file(drive, bpb, 0, ".HISTORY", join_buf[0..offset]);
     }
 }
 
@@ -246,7 +248,7 @@ fn load_history_from_disk() void {
 
     if (fat.read_bpb(drive)) |bpb| {
         var load_buf: [HISTORY_SIZE * 1024]u8 = [_]u8{0} ** (HISTORY_SIZE * 1024);
-        const read = fat.read_file(drive, bpb, 0, "HISTORY", &load_buf);
+        const read = fat.read_file(drive, bpb, 0, ".HISTORY", &load_buf);
         if (read <= 0) return;
 
         history_count = 0;
@@ -622,11 +624,11 @@ pub fn shell_execute_literal(cmd: []const u8) void {
         }
     }
 
-    // Check External Scripts in SYSTEM/CMDS/
+    // Check External Scripts in .SYSTEM/CMDS/
     if (common.selected_disk >= 0) {
-        // Construct path: SYSTEM/CMDS/<cmd_name>.nv
+        // Construct path: /.SYSTEM/CMDS/<cmd_name>.nv
         var path_buf: [64]u8 = [_]u8{0} ** 64;
-        const prefix = "SYSTEM/CMDS/";
+        const prefix = "/.SYSTEM/CMDS/";
         const extension = ".nv";
         
         if (prefix.len + cmd_name.len + extension.len < 64) {
@@ -634,72 +636,43 @@ pub fn shell_execute_literal(cmd: []const u8) void {
             common.copy(path_buf[prefix.len..], cmd_name);
             common.copy(path_buf[prefix.len + cmd_name.len..], extension);
             const full_path = path_buf[0 .. prefix.len + cmd_name.len + extension.len];
-            _ = full_path;
 
             // Check if file exists
             const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
-            if (fat.read_bpb(drive)) |_| {
-                // Warning: We need to search from root, but current_dir_cluster might be different.
-                // For simplicity now, let's just resolve full path from root using resolve_path or similar.
-                // Since our FAT driver is limited, let's assume SYSTEM/CMDS is reachable.
-                // Actually, our resolve_path handles absolute paths starting with /, but here we use relative logic
-                // usually. Let's try to assume we are at root or use full path logic if we implemented absolute paths.
-                
-                // Workaround: We will use a helper to load it. For now, rely on `nova` command logic?
-                // No, we need to run it directly. Let's just try to open it using interpreter's logic.
-                // We'll reimplement script execution logic here briefly or expose a function.
-                // Ideally `interpreter.runScript` handles reading.
-                
-                // Let's modify interpreter.runScript to accept an absolute path flag or handle it better.
-                // For now, let's try to run it.
-                
-                // Parse arguments for the script (same logic as above, we should refactor this)
-                var s_args: [8][]const u8 = undefined;
-                var s_argc: usize = 0;
-                var n: usize = 0;
-                var in_arg = false;
-                var arg_start: usize = 0;
-                for (args_only, 0..) |c, k| {
-                    if (c == ' ') {
-                        if (in_arg) {
-                            if (s_argc < 8) {
-                                s_args[s_argc] = args_only[arg_start..k];
-                                s_argc += 1;
+            if (fat.read_bpb(drive)) |bpb| {
+                if (fat.find_entry(drive, bpb, 0, full_path)) |_| {
+                     // Parse arguments for the script
+                    var s_args: [8][]const u8 = undefined;
+                    var s_argc: usize = 0;
+                    var n: usize = 0;
+                    var in_arg = false;
+                    var arg_start: usize = 0;
+                    for (args_only, 0..) |c, k| {
+                        if (c == ' ') {
+                            if (in_arg) {
+                                if (s_argc < 8) {
+                                    s_args[s_argc] = args_only[arg_start..k];
+                                    s_argc += 1;
+                                }
+                                in_arg = false;
                             }
-                            in_arg = false;
+                        } else {
+                            if (!in_arg) {
+                                arg_start = k;
+                                in_arg = true;
+                            }
                         }
-                    } else {
-                        if (!in_arg) {
-                            arg_start = k;
-                            in_arg = true;
-                        }
+                        n = k;
                     }
-                    n = k;
+                    if (in_arg and s_argc < 8) {
+                        s_args[s_argc] = args_only[arg_start..n+1];
+                        s_argc += 1;
+                    }
+                    nova_commands.setScriptArgs(s_args[0..s_argc]);
+                    
+                    nova_interpreter.runScript(full_path);
+                    return;
                 }
-                if (in_arg and s_argc < 8) {
-                    s_args[s_argc] = args_only[arg_start..n+1];
-                    s_argc += 1;
-                }
-                nova_commands.setScriptArgs(s_args[0..s_argc]);
-                
-                // We'll use a trick: `nova` command runs a file. We can reuse that logic.
-                // But `nova` command runs relative to current dir usually.
-                // We need to run from SYSTEM/CMDS.
-                // Since we don't have absolute path support in interpreter fully transparently yet,
-                // we will skip this step or assume the user is in root for now?
-                // Wait, our `resolve_path` supports descent. "SYSTEM/CMDS/file.nv" works if we are at root.
-                // If we are deep in folders, we need absolute path support.
-                // Let's assume for now this works if we provide the full path relative to current or implementation of absolute path.
-                
-                // Let's try running it via interpreter.runScript("SYSTEM/CMDS/file.nv"). 
-                // BUT runScript resolves relative to current dir.
-                // We need to temporarily switch to root or implement absolute paths.
-                
-                // Let's enable this feature fully later when FS supports absolute paths better.
-                // For now, just enabling built-ins is a huge step.
-                // UNCOMMENT THIS WHEN ABSOLUTE PATHS ARE READY
-                // nova_interpreter.runScript(full_path);
-                // return;
             }
         }
     }
@@ -783,6 +756,18 @@ fn cmd_handler_shutdown(_: []const u8) void {
 
 fn cmd_handler_ls(args: []const u8) void {
     shell_cmds.cmd_ls(args.ptr, @intCast(args.len));
+}
+
+fn cmd_handler_la(args: []const u8) void {
+    var buf: [128]u8 = [_]u8{0} ** 128;
+    buf[0] = '-'; buf[1] = 'a'; buf[2] = ' ';
+    if (args.len > 0) {
+        if (3 + args.len > 128) return;
+        common.copy(buf[3..], args);
+        shell_cmds.cmd_ls(buf[0..].ptr, @intCast(3 + args.len));
+    } else {
+        shell_cmds.cmd_ls(buf[0..].ptr, 2);
+    }
 }
 
 fn cmd_handler_lsdsk(_: []const u8) void {
@@ -908,6 +893,156 @@ fn cmd_handler_mkdir(args: []const u8) void {
     if (args.len > 0) {
         shell_cmds.cmd_mkdir(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: mkdir <name>\n"); }
+}
+
+fn cmd_handler_install(args: []const u8) void {
+    // 1. Skip leading space
+    var i: usize = 0;
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+    if (i >= args.len) {
+        common.printZ("Usage: install <script.nv> [name]\n");
+        return;
+    }
+    
+    // 2. Parse src
+    const start_src = i;
+    while (i < args.len and args[i] != ' ') : (i += 1) {}
+    const src = args[start_src..i];
+    
+    // 3. Skip space for optional name
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+    
+    var name_arg: []const u8 = "";
+    if (i < args.len) {
+        const start_name = i;
+        while (i < args.len and args[i] != ' ') : (i += 1) {}
+        name_arg = args[start_name..i];
+    } else {
+        name_arg = src; // Default to src filename
+    }
+    
+    // Ensure name has .nv extension
+    var dest_name_buf: [64]u8 = [_]u8{0} ** 64;
+    var dest_name: []const u8 = undefined;
+    
+    var is_nv = false;
+    if (name_arg.len >= 3) {
+         if (name_arg[name_arg.len-3] == '.' and 
+             (name_arg[name_arg.len-2] == 'n' or name_arg[name_arg.len-2] == 'N') and 
+             (name_arg[name_arg.len-1] == 'v' or name_arg[name_arg.len-1] == 'V')) is_nv = true;
+    }
+    
+    if (is_nv) {
+        dest_name = name_arg;
+    } else {
+        if (name_arg.len + 3 > 64) {
+            common.printZ("Error: Name too long\n");
+            return;
+        }
+        common.copy(dest_name_buf[0..], name_arg);
+        common.copy(dest_name_buf[name_arg.len..], ".nv");
+        dest_name = dest_name_buf[0..name_arg.len + 3];
+    }
+    
+    // Perform installation
+    if (common.selected_disk < 0) {
+        common.printZ("Error: No disk mounted.\n");
+        return;
+    }
+    const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+    
+    if (fat.read_bpb(drive)) |bpb| {
+        common.printZ("Installing ");
+        common.printZ(src);
+        common.printZ(" to /.SYSTEM/CMDS/");
+        common.printZ(dest_name);
+        common.printZ("...\n");
+
+        _ = fat.create_directory(drive, bpb, 0, "/.SYSTEM");
+        _ = fat.create_directory(drive, bpb, 0, "/.SYSTEM/CMDS");
+        
+        // Construct dest path: /.SYSTEM/CMDS/<dest_name>
+        var dest_path_buf: [128]u8 = [_]u8{0} ** 128;
+        const prefix = "/.SYSTEM/CMDS/";
+        common.copy(dest_path_buf[0..], prefix);
+        common.copy(dest_path_buf[prefix.len..], dest_name);
+        const dest_path = dest_path_buf[0..prefix.len + dest_name.len];
+        
+        if (fat.copy_file(drive, bpb, common.current_dir_cluster, src, dest_path)) {
+            common.printZ("Success! You can now run it by typing: ");
+            if (!is_nv) {
+                common.printZ(name_arg);
+            } else {
+                 common.printZ(dest_name); 
+            }
+            common.printZ("\n");
+        } else {
+            common.printZ("Error: Copy failed. Check if source exists.\n");
+        }
+    } else {
+        common.printZ("Error: Disk read failed\n");
+    }
+}
+
+fn cmd_handler_uninstall(args: []const u8) void {
+    // 1. Parse name
+    var i: usize = 0;
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+    if (i >= args.len) {
+        common.printZ("Usage: uninstall <cmd_name>\n");
+        return;
+    }
+    const name_start = i;
+    while (i < args.len and args[i] != ' ') : (i += 1) {}
+    const name = args[name_start..i];
+
+    // Ensure .nv extension
+    var dest_name_buf: [64]u8 = [_]u8{0} ** 64;
+    var dest_name: []const u8 = undefined;
+    
+    var is_nv = false;
+    if (name.len >= 3) {
+         if (name[name.len-3] == '.' and 
+             (name[name.len-2] == 'n' or name[name.len-2] == 'N') and 
+             (name[name.len-1] == 'v' or name[name.len-1] == 'V')) is_nv = true;
+    }
+    
+    if (is_nv) {
+        dest_name = name;
+    } else {
+        if (name.len + 3 > 64) { common.printZ("Error: Name too long\n"); return; }
+        common.copy(dest_name_buf[0..], name);
+        common.copy(dest_name_buf[name.len..], ".nv");
+        dest_name = dest_name_buf[0..name.len + 3];
+    }
+    
+    // Perform delete
+    if (common.selected_disk < 0) {
+        common.printZ("Error: No disk mounted.\n");
+        return;
+    }
+    const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+    
+    if (fat.read_bpb(drive)) |bpb| {
+        // Construct path: /.SYSTEM/CMDS/<dest_name>
+        var dest_path_buf: [128]u8 = [_]u8{0} ** 128;
+        const prefix = "/.SYSTEM/CMDS/";
+        common.copy(dest_path_buf[0..], prefix);
+        common.copy(dest_path_buf[prefix.len..], dest_name);
+        const dest_path = dest_path_buf[0..prefix.len + dest_name.len];
+        
+        common.printZ("Uninstalling ");
+        common.printZ(dest_path);
+        common.printZ("...\n");
+        
+        if (fat.delete_file(drive, bpb, 0, dest_path)) {
+            common.printZ("Success!\n");
+        } else {
+            common.printZ("Error: Command not found or delete failed.\n");
+        }
+    } else {
+        common.printZ("Error: Disk read failed\n");
+    }
 }
 
 fn cmd_handler_cd(args: []const u8) void {

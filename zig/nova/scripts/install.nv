@@ -13,11 +13,11 @@ if argc() > 1 {
 print("Installing " + src + "...");
 
 // Ensure system directories exist
-create_dir("SYSTEM");
-create_dir("SYSTEM/CMDS");
+create_dir("/SYSTEM");
+create_dir("/SYSTEM/CMDS");
 
-set string dest = "SYSTEM/CMDS/" + dest_name;
+set string dest = "/SYSTEM/CMDS/" + dest_name;
 
 copy(src, dest);
 print("Successfully installed to " + dest);
-print("You can now run it using: nova " + dest);
+print("You can now run it by typing: " + dest_name);

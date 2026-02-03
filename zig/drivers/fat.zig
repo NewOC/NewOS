@@ -99,11 +99,11 @@ pub const DirEntry = struct {
     file_size: u32,
 };
 
-pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32) void {
+pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, show_hidden: bool) void {
     if (dir_cluster == 0) {
         var sector = bpb.first_root_dir_sector;
         while (sector < bpb.first_data_sector) : (sector += 1) {
-            if (!list_sector(drive, sector)) break;
+            if (!list_sector(drive, sector, show_hidden)) break;
         }
     } else {
         var current = dir_cluster;
@@ -112,7 +112,7 @@ pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32) void {
             const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
             var s: u32 = 0;
             while (s < bpb.sectors_per_cluster) : (s += 1) {
-                if (!list_sector(drive, lba + s)) break;
+                if (!list_sector(drive, lba + s, show_hidden)) break;
             }
             current = get_fat_entry(drive, bpb, current);
             if (current == 0) break;
@@ -120,7 +120,7 @@ pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32) void {
     }
 }
 
-fn list_sector(drive: ata.Drive, sector: u32) bool {
+fn list_sector(drive: ata.Drive, sector: u32, show_hidden: bool) bool {
     var buffer: [512]u8 = undefined;
     ata.read_sector(drive, sector, &buffer);
     var i: u32 = 0;
@@ -130,6 +130,13 @@ fn list_sector(drive: ata.Drive, sector: u32) bool {
         if (buffer[i + 11] == 0x0F) continue; // LFN
 
         const attr = buffer[i + 11];
+        
+        // Hide dotfiles and hidden attribute files unless show_hidden
+        if (!show_hidden) {
+            if (buffer[i] == '.') continue;
+            if ((attr & 0x02) != 0) continue;
+        }
+
         const is_dir = (attr & 0x10) != 0;
         
         const case_bits = buffer[i + 12];
