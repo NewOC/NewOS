@@ -1094,7 +1094,7 @@ fn append_to_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []
         }
     }
 
-    return update_entry_size_literal(drive, bpb, dir_cluster, name, old_size + @intCast(data.len));
+    return update_entry_size_literal(drive, bpb, dir_cluster, name, old_size + @as(u32, @intCast(data.len)));
 }
 
 fn write_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []const u8, data: []const u8) bool {
