@@ -193,4 +193,8 @@ Creates a FAT filesystem on the target drive.
 - **Usage:** `mkfs-fat16 0` (Formats Master as FAT16)
 
 ---
-*Generated for NewOS v0.10*
+## 🔄 Redirection
+NewOS shell supports standard output redirection to files.
+- **Syntax:** `command > filename`
+- **Example:** `ls > files.txt`
+- **Note:** This overwrites the target file. Requires a mounted disk.
