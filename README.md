@@ -26,6 +26,7 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 - ✅ **Native Commands** - Native implementation of `install` and `uninstall` for Nova scripts
 - ✅ **Recursive FS** - `cp` and `delete` now support recursive directory operations
 - ✅ **Hierarchical Paths** - Full support for **Current Working Directory (CWD)**, absolute/relative paths, and quoted arguments for spaces
+- ✅ **Serial Terminal** - Support for QEMU `-nographic` mode with full bidirectional shell interaction
 
 ### Building and Running
 
@@ -42,6 +43,11 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 **Run:**
 ```bash
 qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,file=disk.img
+```
+
+**Run (No Graphics/Serial):**
+```bash
+qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,file=disk.img -nographic
 ```
 
 ### Available Commands

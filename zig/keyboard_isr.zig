@@ -183,32 +183,91 @@ pub export fn isr_keyboard() void {
     
     // Add to buffer if valid character
     if (ascii != 0) {
-        const next_head = (buffer_head + 1) % BUFFER_SIZE;
-        if (next_head != buffer_tail) {
-            keyboard_buffer[buffer_head] = ascii;
-            buffer_head = next_head;
+        inject_into_buffer(ascii);
+    }
+}
+
+var serial_esc_state: u8 = 0;
+pub fn serial_inject_char(c: u8) void {
+    if (serial_esc_state == 0) {
+        if (c == 27) {
+            serial_esc_state = 1;
+        } else if (c == 127) {
+            inject_into_buffer(8);
+        } else {
+            inject_into_buffer(if (c == 13) 10 else c);
         }
+    } else if (serial_esc_state == 1) {
+        if (c == '[') {
+            serial_esc_state = 2;
+        } else {
+            inject_into_buffer(27);
+            inject_into_buffer(c);
+            serial_esc_state = 0;
+        }
+    } else if (serial_esc_state == 2) {
+        var ascii: u8 = 0;
+        switch (c) {
+            'A' => ascii = KEY_UP,
+            'B' => ascii = KEY_DOWN,
+            'C' => ascii = KEY_RIGHT,
+            'D' => ascii = KEY_LEFT,
+            'H' => ascii = KEY_HOME,
+            'F' => ascii = KEY_END,
+            '3' => { serial_esc_state = 3; return; },
+            '1' => { serial_esc_state = 4; return; },
+            '4' => { serial_esc_state = 5; return; },
+            else => {
+                inject_into_buffer(27);
+                inject_into_buffer('[');
+                inject_into_buffer(c);
+                serial_esc_state = 0;
+                return;
+            },
+        }
+        if (ascii != 0) inject_into_buffer(ascii);
+        serial_esc_state = 0;
+    } else if (serial_esc_state == 3) { // ESC [ 3 ...
+        if (c == '~') inject_into_buffer(KEY_DELETE);
+        serial_esc_state = 0;
+    } else if (serial_esc_state == 4) { // ESC [ 1 ...
+        if (c == '~') inject_into_buffer(KEY_HOME);
+        serial_esc_state = 0;
+    } else if (serial_esc_state == 5) { // ESC [ 4 ...
+        if (c == '~') inject_into_buffer(KEY_END);
+        serial_esc_state = 0;
+    }
+}
+
+fn inject_into_buffer(ascii: u8) void {
+    if (ascii == 0) return;
+    const head_ptr = @as(*volatile usize, &buffer_head);
+    const tail = @as(*volatile usize, &buffer_tail).*;
+    const next_head = (head_ptr.* + 1) % BUFFER_SIZE;
+    if (next_head != tail) {
+        keyboard_buffer[head_ptr.*] = ascii;
+        head_ptr.* = next_head;
     }
 }
 
 // Get character from buffer (non-blocking)
 export fn keyboard_getchar() u8 {
-    if (buffer_tail == buffer_head) {
+    const head = @as(*volatile usize, &buffer_head).*;
+    const tail_ptr = @as(*volatile usize, &buffer_tail);
+    if (tail_ptr.* == head) {
         return 0; // Buffer empty
     }
     
-    const ch = keyboard_buffer[buffer_tail];
-    buffer_tail = (buffer_tail + 1) % BUFFER_SIZE;
+    const ch = keyboard_buffer[tail_ptr.*];
+    tail_ptr.* = (tail_ptr.* + 1) % BUFFER_SIZE;
     return ch;
-}
-
-fn read_volatile(ptr: *const usize) usize {
-    return @as(*volatile const usize, ptr).*;
 }
 
 // Check if buffer has data
 pub export fn keyboard_has_data() bool {
-    return buffer_tail != read_volatile(&buffer_head);
+    const head = @as(*volatile usize, &buffer_head).*;
+    const tail = @as(*volatile usize, &buffer_tail).*;
+    return tail != head;
 }
 
 pub export fn keyboard_get_caps_lock() bool { return caps_lock; }

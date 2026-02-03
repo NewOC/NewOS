@@ -27,6 +27,16 @@ pub fn init() void {
 pub export fn isr_timer() void {
     const ptr = @as(*volatile usize, &ticks);
     ptr.* += 1;
+    
+    // Poll serial for input to support -nographic
+    const serial = @import("serial.zig");
+    if (serial.serial_has_data()) {
+        const c = serial.serial_getchar();
+        if (c != 0) {
+            const keyboard = @import("../keyboard_isr.zig");
+            keyboard.serial_inject_char(c);
+        }
+    }
 }
 
 /// Get elapsed seconds since boot

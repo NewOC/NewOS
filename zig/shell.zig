@@ -137,7 +137,7 @@ pub export fn read_command() void {
 
         if (char == 10) { // Enter
             break;
-        } else if (char == 8) { // Backspace
+        } else if (char == 8 or char == 127) { // Backspace
             if (cmd_pos > 0) {
                 // Shift buffer left
                 var i: usize = cmd_pos - 1;
@@ -307,31 +307,37 @@ fn refresh_line() void {
     // Draw text on VGA. We use zig_print_char to allow natural wrapping.
     // If it scrolls, we need to detect it.
     vga.zig_set_cursor(prompt_row, prompt_col);
-    const row_before = vga.zig_get_cursor_row();
-    for (cmd_buffer[0..cmd_len]) |c| vga.zig_print_char(c);
-    const row_after = vga.zig_get_cursor_row();
-    
-    // If we scrolled, we need to move prompt_row up to stay in sync
-    // This is a bit tricky but 1-row scroll is most common
-    if (row_after < row_before) { // Very likely a scroll happened
-        // Note: this is a simple heuristic. A better way would be a scroll callback.
-        if (prompt_row > 0) prompt_row -= 1;
+    for (cmd_buffer[0..cmd_len]) |c| {
+        const row_before_char = vga.zig_get_cursor_row();
+        vga.zig_print_char(c);
+        const row_after_char = vga.zig_get_cursor_row();
+        
+        // Detection of scroll: 
+        // 1. row decreased (typical scroll)
+        // 2. row stayed the same but we were on the last row and printed a newline/wrapped
+        // Since zig_print_char handles scroll by staying on the same (last) row,
+        // we need to be careful.
+        if (row_after_char < row_before_char) {
+            if (prompt_row > 0) prompt_row -= 1;
+        } else if (row_before_char == vga.MAX_ROWS - 1 and row_after_char == vga.MAX_ROWS - 1) {
+            // If we are at the last row and we just did a newline or wrapped, it scrolled
+            // Note: internal_newline sets cursor_row to MAX_ROWS - 1 after scroll.
+            // We can check if we wrapped or got a newline.
+            if (c == '\n' or (vga.zig_get_cursor_col() == 0 and c != '\r' and c != 8)) {
+                 if (prompt_row > 0) prompt_row -= 1;
+            }
+        }
     }
     
-    // 2. Serial Update (Terminal-friendly: \r + print whole line)
-    serial.serial_print_char('\r');
-    display_prompt_serial();
+    // 2. Serial Update
+    serial.serial_hide_cursor();
+    serial.serial_set_cursor(prompt_row, prompt_col);
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
-    // Clear tail on serial (3 spaces is enough for small deltas)
-    serial.serial_print_str("   "); 
-    
-    // 3. Move cursor back to position on serial (approximate)
-    serial.serial_print_char('\r');
-    display_prompt_serial();
-    serial.serial_print_str(cmd_buffer[0..saved_pos]);
+    serial.serial_clear_line();
 
     cmd_pos = saved_pos;
     move_screen_cursor();
+    serial.serial_show_cursor();
     
     // Update status indicator in top-right corner
     vga.VIDEO_MEMORY[80 - 14] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'C';
