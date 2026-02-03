@@ -21,7 +21,9 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 - ✅ **Keyboard Driver** - Full keyboard input support with interrupts (Shift, CAPS, NUM)
 - ✅ **Command Shell** - Interactive console with **Tab Autocomplete**, **Command History** (persisted to disk), and cycling matches
 - ✅ **FAT12/16 Support** - Native disk support for ATA drives
-- ✅ **Nova Language v0.5** - Integrated custom interpreter with history and autocomplete
+- ✅ **Nova Language v0.10.5** - Integrated custom interpreter with history, autocomplete, math, and script support
+- ✅ **Embedded Scripts** - Built-in commands written in Nova (`syscheck`, `hello`, `install`)
+- ✅ **Recursive FS** - `cp` and `delete` now support recursive directory operations
 
 ### Building and Running
 
@@ -46,6 +48,7 @@ qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,fil
 - `clear`          - Clear screen
 - `about`          - Show OS information (Version, Architecture)
 - `nova`           - Start Nova Language Interpreter
+- `syscheck`       - Run system health check (Embedded Nova Script)
 - `uptime`         - Show system uptime and current RTC time
 - `time`           - Show current date and time
 - `reboot`         - Reboot system
@@ -53,19 +56,26 @@ qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,fil
 - `ls`, `lsdsk`    - List files and disks
 - `mount <d>`      - Select active disk (0/1 or ram)
 - `touch <file>`   - Create file on disk/RAM
+- `mkdir <dir>`    - Create directory
+- `cp <src> <dst>` - Copy file or **folder recursively**
+- `mv <src> <dst>` - Move or rename file/folder
 - `cat <file>`     - Show file contents
 - `edit <file>`    - Open built-in text editor
-- `rm <file>`      - Delete file
+- `rm <file>`      - Delete file/folder (recursive support)
 - `history`        - Show command history
 - `mem`            - Test memory allocator
 
 ### Nova Language
-A custom interpreted language built into NewOS. Now featuring **Command History** and **Tab Autocomplete**.
+A custom interpreted language built into NewOS. Now featuring **Command History**, **Tab Autocomplete**, and **Embedded Scripts**.
 
 **Features:**
 - Variables: `set string name = "Value";`, `set int age = 10 + 20;`
-- Arithmetic: `+`, `-`, `*`, `/`, `()` (e.g. `print((10+2)*5);`)
+- Arithmetic: `+`, `-`, `*`, `/`, `^`, `%`, `()` (e.g. `print((10+2)*5);`)
+- Math: `sin()`, `cos()`, `tan()`, `abs()`, `min()`, `max()`, `random()`
+- Filesystem: `create_file`, `write_file`, `mkdir`, `delete`, `copy`, `rename`, `read`
+- Interactive: `input()` for reading user input
 - System: `reboot();`, `shutdown();`, `exit();`
+- Scripting: `argc()`, `args(n)`, `install("script.nv")`
 
 ### Architecture
 
@@ -90,7 +100,7 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 
 ### Roadmap
 
-#### Current progress (v0.8)
+#### Current progress (v0.10.1)
 - [x] IDT (Interrupt Descriptor Table)
 - [x] Timer (PIT) & Precise Sleep
 - [x] RTC Driver (Date/Time)
@@ -98,12 +108,14 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 - [x] Command Shell with **Tab Autocomplete**
 - [x] Persistent command history on disk
 - [x] FAT12/FAT16 file system (Real disk support)
+- [x] Recursive Directory Operations (cp, rm)
 - [x] Built-in Text Editor (`edit`)
 - [x] Dynamic Shell Commands table
-- [x] Nova Language v0.5 (History, Autocomplete)
+- [x] Nova Language v0.10 (History, Autocomplete, Sci-Math, Scripts)
+- [x] Embedded Nova Commands (syscheck, install)
 
 #### Future improvements
-- [ ] Heap Memory Allocator (kmalloc/kfree) - *In progress (v0.5)*
+- [x] Heap Memory Allocator (kmalloc/kfree) - *Basic implementation done*
 - [ ] Paging & Virtual Memory Management
 - [ ] Multi-tasking (Kernel & User threads)
 - [ ] User Mode (Ring 3) & System Calls

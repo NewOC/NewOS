@@ -29,6 +29,29 @@ var int_conv_buf: [32]u8 = undefined;
 var term_buffer: [512]u8 = [_]u8{0} ** 512;
 var global_result_buffer: [512]u8 = [_]u8{0} ** 512;
 
+// Script arguments storage
+const MAX_SCRIPT_ARGS = 8;
+const MAX_ARG_LEN = 64;
+var script_args: [MAX_SCRIPT_ARGS][MAX_ARG_LEN]u8 = [_][MAX_ARG_LEN]u8{[_]u8{0} ** MAX_ARG_LEN} ** MAX_SCRIPT_ARGS;
+var script_args_len: [MAX_SCRIPT_ARGS]usize = [_]usize{0} ** MAX_SCRIPT_ARGS;
+var script_argc: usize = 0;
+
+pub fn setScriptArgs(args: []const []const u8) void {
+    script_argc = @min(args.len, MAX_SCRIPT_ARGS);
+    for (0..script_argc) |i| {
+        const len = @min(args[i].len, MAX_ARG_LEN);
+        common.copy(script_args[i][0..], args[i][0..len]);
+        script_args_len[i] = len;
+    }
+}
+
+pub fn clearScriptArgs() void {
+    script_argc = 0;
+    for (0..MAX_SCRIPT_ARGS) |i| {
+        script_args_len[i] = 0;
+    }
+}
+
 // --- Helper Functions ---
 
 fn trim(s: []const u8) []const u8 {
@@ -262,6 +285,28 @@ fn evaluateTerm(raw_term: []const u8) EvalResult {
         // Copy to persistent storage
         common.copy(global_result_buffer[0..], final_input);
         return .{ .str_val = global_result_buffer[0..len], .int_val = 0, .etype = .string };
+    }
+
+    // argc() - returns number of script arguments
+    if (common.std_mem_eql(term, "argc()")) {
+        return .{ .str_val = "", .int_val = @intCast(script_argc), .etype = .int };
+    }
+
+    // args(n) - returns nth argument as string
+    if (common.startsWith(term, "args(")) {
+        if (term[term.len - 1] == ')') {
+            const idx_expr = term[5 .. term.len - 1];
+            const idx_res = evaluateExpression(idx_expr);
+            if (idx_res.etype == .int and idx_res.int_val >= 0 and idx_res.int_val < script_argc) {
+                const idx: usize = @intCast(idx_res.int_val);
+                const arg = script_args[idx][0..script_args_len[idx]];
+                // Copy to global buffer for persistence
+                common.copy(global_result_buffer[0..], arg);
+                return .{ .str_val = global_result_buffer[0..script_args_len[idx]], .int_val = 0, .etype = .string };
+            }
+            // Return empty string if index out of bounds
+            return .{ .str_val = "", .int_val = 0, .etype = .string };
+        }
     }
 
     return getValue(term);

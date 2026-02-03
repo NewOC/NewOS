@@ -4,6 +4,7 @@ const common = @import("../commands/common.zig");
 pub const print_char = common.print_char;
 pub const printZ = common.printZ;
 pub const printNum = common.printNum;
+pub const std_mem_eql = common.std_mem_eql;
 
 pub const reboot = common.reboot;
 pub const shutdown = common.shutdown;

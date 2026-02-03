@@ -1,0 +1,11 @@
+print("Hello from Embedded Nova Command!");
+if argc() > 0 {
+    print("You greeted me with args:");
+    set int i = 0;
+    while i < argc() {
+        print("- " + args(i));
+        set int i = i + 1;
+    }
+} else {
+    print("Try running 'hello world' next time!");
+}

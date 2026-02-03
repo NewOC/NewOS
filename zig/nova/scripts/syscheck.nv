@@ -1,0 +1,8 @@
+shell("clear");
+print("=== System Health Check ===");
+print("Uptime: ");
+shell("uptime");
+print("Memory: ");
+shell("mem");
+print("Disks: ");
+shell("lsdsk");

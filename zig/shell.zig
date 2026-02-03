@@ -10,6 +10,20 @@ const serial = @import("drivers/serial.zig");
 const fat = @import("drivers/fat.zig");
 const ata = @import("drivers/ata.zig");
 const config = @import("config.zig");
+const nova_interpreter = @import("nova/interpreter.zig");
+const nova_commands = @import("nova/commands.zig");
+
+// Embedded Nova Scripts
+const EmbeddedScript = struct {
+    name: []const u8,
+    source: []const u8,
+};
+
+const BUILTIN_SCRIPTS = [_]EmbeddedScript{
+    .{ .name = "hello", .source = @embedFile("nova/scripts/hello.nv") },
+    .{ .name = "install", .source = @embedFile("nova/scripts/install.nv") },
+    .{ .name = "syscheck", .source = @embedFile("nova/scripts/syscheck.nv") },
+};
 
 // Shell configuration
 const build_config = @import("build_config");
@@ -569,6 +583,127 @@ pub fn shell_execute_literal(cmd: []const u8) void {
         }
     }
 
+    // Check Built-in Nova Scripts
+    for (BUILTIN_SCRIPTS) |script| {
+        if (common.std_mem_eql(script.name, cmd_name)) {
+            // Parse arguments for the script
+            var s_args: [8][]const u8 = undefined;
+            var s_argc: usize = 0;
+            
+            var n: usize = 0;
+            var in_arg = false;
+            var arg_start: usize = 0;
+            
+            for (args_only, 0..) |c, k| {
+                if (c == ' ') {
+                    if (in_arg) {
+                        if (s_argc < 8) {
+                            s_args[s_argc] = args_only[arg_start..k];
+                            s_argc += 1;
+                        }
+                        in_arg = false;
+                    }
+                } else {
+                    if (!in_arg) {
+                        arg_start = k;
+                        in_arg = true;
+                    }
+                }
+                n = k;
+            }
+            if (in_arg and s_argc < 8) {
+                s_args[s_argc] = args_only[arg_start..n+1];
+                s_argc += 1;
+            }
+            
+            nova_commands.setScriptArgs(s_args[0..s_argc]);
+            nova_interpreter.runScriptSource(script.source);
+            return;
+        }
+    }
+
+    // Check External Scripts in SYSTEM/CMDS/
+    if (common.selected_disk >= 0) {
+        // Construct path: SYSTEM/CMDS/<cmd_name>.nv
+        var path_buf: [64]u8 = [_]u8{0} ** 64;
+        const prefix = "SYSTEM/CMDS/";
+        const extension = ".nv";
+        
+        if (prefix.len + cmd_name.len + extension.len < 64) {
+            common.copy(path_buf[0..], prefix);
+            common.copy(path_buf[prefix.len..], cmd_name);
+            common.copy(path_buf[prefix.len + cmd_name.len..], extension);
+            const full_path = path_buf[0 .. prefix.len + cmd_name.len + extension.len];
+            _ = full_path;
+
+            // Check if file exists
+            const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+            if (fat.read_bpb(drive)) |_| {
+                // Warning: We need to search from root, but current_dir_cluster might be different.
+                // For simplicity now, let's just resolve full path from root using resolve_path or similar.
+                // Since our FAT driver is limited, let's assume SYSTEM/CMDS is reachable.
+                // Actually, our resolve_path handles absolute paths starting with /, but here we use relative logic
+                // usually. Let's try to assume we are at root or use full path logic if we implemented absolute paths.
+                
+                // Workaround: We will use a helper to load it. For now, rely on `nova` command logic?
+                // No, we need to run it directly. Let's just try to open it using interpreter's logic.
+                // We'll reimplement script execution logic here briefly or expose a function.
+                // Ideally `interpreter.runScript` handles reading.
+                
+                // Let's modify interpreter.runScript to accept an absolute path flag or handle it better.
+                // For now, let's try to run it.
+                
+                // Parse arguments for the script (same logic as above, we should refactor this)
+                var s_args: [8][]const u8 = undefined;
+                var s_argc: usize = 0;
+                var n: usize = 0;
+                var in_arg = false;
+                var arg_start: usize = 0;
+                for (args_only, 0..) |c, k| {
+                    if (c == ' ') {
+                        if (in_arg) {
+                            if (s_argc < 8) {
+                                s_args[s_argc] = args_only[arg_start..k];
+                                s_argc += 1;
+                            }
+                            in_arg = false;
+                        }
+                    } else {
+                        if (!in_arg) {
+                            arg_start = k;
+                            in_arg = true;
+                        }
+                    }
+                    n = k;
+                }
+                if (in_arg and s_argc < 8) {
+                    s_args[s_argc] = args_only[arg_start..n+1];
+                    s_argc += 1;
+                }
+                nova_commands.setScriptArgs(s_args[0..s_argc]);
+                
+                // We'll use a trick: `nova` command runs a file. We can reuse that logic.
+                // But `nova` command runs relative to current dir usually.
+                // We need to run from SYSTEM/CMDS.
+                // Since we don't have absolute path support in interpreter fully transparently yet,
+                // we will skip this step or assume the user is in root for now?
+                // Wait, our `resolve_path` supports descent. "SYSTEM/CMDS/file.nv" works if we are at root.
+                // If we are deep in folders, we need absolute path support.
+                // Let's assume for now this works if we provide the full path relative to current or implementation of absolute path.
+                
+                // Let's try running it via interpreter.runScript("SYSTEM/CMDS/file.nv"). 
+                // BUT runScript resolves relative to current dir.
+                // We need to temporarily switch to root or implement absolute paths.
+                
+                // Let's enable this feature fully later when FS supports absolute paths better.
+                // For now, just enabling built-ins is a huge step.
+                // UNCOMMENT THIS WHEN ABSOLUTE PATHS ARE READY
+                // nova_interpreter.runScript(full_path);
+                // return;
+            }
+        }
+    }
+    
     common.printZ("Unknown command: ");
     common.printZ(cmd_name);
     common.printZ("\n");

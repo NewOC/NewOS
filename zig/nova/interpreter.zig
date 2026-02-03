@@ -119,7 +119,8 @@ fn runScript(path: []const u8) void {
             const bytes_read = fat.read_file(drive, bpb, global_common.current_dir_cluster, path, &script_buffer);
             
             if (bytes_read > 0) {
-                executeScript(script_buffer[0..@intCast(bytes_read)]);
+                const script = script_buffer[0..@intCast(bytes_read)];
+                runScriptSource(script);
             } else {
                 common.printZ("Error: Empty file or read error\n");
             }
@@ -129,6 +130,95 @@ fn runScript(path: []const u8) void {
             common.printZ("\n");
         }
     }
+}
+
+pub fn runScriptSource(script: []const u8) void {
+     // VALIDATE SYNTAX BEFORE EXECUTION
+    if (!validateScript(script)) {
+        common.printZ("Script validation failed. Execution aborted.\n");
+        return;
+    }
+    
+    // Reset state before run
+    exit_flag = false;
+    executeScript(script);
+}
+
+fn validateScript(script: []const u8) bool {
+    var brace_depth: i32 = 0;
+    var paren_depth: i32 = 0;
+    var in_quotes: bool = false;
+    var line_num: u32 = 1;
+    var has_errors: bool = false;
+    
+    var i: usize = 0;
+    while (i < script.len) : (i += 1) {
+        const c = script[i];
+        
+        if (c == '\n') {
+            line_num += 1;
+            if (in_quotes) {
+                common.printZ("Error: Unclosed quote on line ");
+                common.printNum(@intCast(line_num - 1));
+                common.printZ("\n");
+                has_errors = true;
+                in_quotes = false;
+            }
+            continue;
+        }
+        
+        if (c == '"') {
+            in_quotes = !in_quotes;
+            continue;
+        }
+        
+        if (in_quotes) continue;
+        
+        if (c == '{') brace_depth += 1;
+        if (c == '}') {
+            brace_depth -= 1;
+            if (brace_depth < 0) {
+                common.printZ("Error: Unmatched '}' on line ");
+                common.printNum(@intCast(line_num));
+                common.printZ("\n");
+                has_errors = true;
+                brace_depth = 0;
+            }
+        }
+        
+        if (c == '(') paren_depth += 1;
+        if (c == ')') {
+            paren_depth -= 1;
+            if (paren_depth < 0) {
+                common.printZ("Error: Unmatched ')' on line ");
+                common.printNum(@intCast(line_num));
+                common.printZ("\n");
+                has_errors = true;
+                paren_depth = 0;
+            }
+        }
+    }
+    
+    if (brace_depth != 0) {
+        common.printZ("Error: Unclosed '{' - missing ");
+        common.printNum(@intCast(brace_depth));
+        common.printZ(" closing brace(s)\n");
+        has_errors = true;
+    }
+    
+    if (paren_depth != 0) {
+        common.printZ("Error: Unclosed '(' - missing ");
+        common.printNum(@intCast(paren_depth));
+        common.printZ(" closing parenthesis\n");
+        has_errors = true;
+    }
+    
+    if (in_quotes) {
+        common.printZ("Error: Unclosed quote at end of file\n");
+        has_errors = true;
+    }
+    
+    return !has_errors;
 }
 
 fn executeScript(script: []const u8) void {
