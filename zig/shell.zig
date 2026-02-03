@@ -121,6 +121,17 @@ pub export fn read_command() void {
     while (true) {
         const char = keyboard.keyboard_wait_char();
 
+        if (char == 3) {
+            common.printZ("^C\n");
+            cmd_len = 0;
+            cmd_pos = 0;
+            for (&cmd_buffer) |*b| b.* = 0;
+            display_prompt();
+            prompt_row = vga.zig_get_cursor_row();
+            prompt_col = vga.zig_get_cursor_col();
+            continue;
+        }
+
         if (char != 9) auto_cycling = false;
 
         if (char == 10) { // Enter

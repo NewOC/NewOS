@@ -223,7 +223,12 @@ fn validateScript(script: []const u8) bool {
 
 fn executeScript(script: []const u8) void {
     var pos: usize = 0;
-    while (pos < script.len and !exit_flag) {
+    while (!exit_flag) {
+        if (keyboard.check_ctrl_c()) {
+            common.printZ("\nScript interrupted by user\n");
+            exit_flag = true;
+            return;
+        }
         // Skip whitespace and empty lines
         while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r')) : (pos += 1) {}
         if (pos >= script.len) break;
@@ -326,6 +331,13 @@ fn readLine() void {
     
     while (true) {
         const key = keyboard.keyboard_wait_char();
+
+        if (key == 3) {
+            common.printZ("^C\n");
+            buf_len = 0;
+            buf_pos = 0;
+            return;
+        }
         
         if (key != 9) auto_cycling = false;
 
@@ -562,4 +574,5 @@ fn moveScreenCursor() void {
 fn executeLine() void {
     if (buf_len == 0) return;
     executeScript(buffer[0..buf_len]);
+    exit_flag = false;
 }

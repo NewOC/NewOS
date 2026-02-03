@@ -164,6 +164,12 @@ pub export fn isr_keyboard() void {
             else
                 scancode[scancode_byte];
 
+            if (ctrl_pressed) {
+                if (ascii == 'c' or ascii == 'C') {
+                    ascii = 3;
+                }
+            }
+
             // Correct Caps Lock logic: it reverses the Shift state for letters
             if (caps_lock) {
                 if (ascii >= 'a' and ascii <= 'z') {
@@ -201,7 +207,7 @@ fn read_volatile(ptr: *const usize) usize {
 }
 
 // Check if buffer has data
-export fn keyboard_has_data() bool {
+pub export fn keyboard_has_data() bool {
     return buffer_tail != read_volatile(&buffer_head);
 }
 
@@ -217,4 +223,14 @@ pub export fn keyboard_wait_char() u8 {
         asm volatile ("hlt");
     }
     return keyboard_getchar();
+}
+
+pub fn check_ctrl_c() bool {
+    if (keyboard_has_data()) {
+        if (keyboard_buffer[buffer_tail] == 3) {
+            _ = keyboard_getchar(); 
+            return true;
+        }
+    }
+    return false;
 }
