@@ -179,8 +179,7 @@ fn draw_ui() void {
     if (is_modified) serial.serial_print_str(" [*]");
     serial.serial_print_str("    ");
     serial.serial_print_str(pos_str);
-
-    draw_content();
+    serial.serial_clear_line();
 
     serial.serial_set_cursor(24, 0);
     serial.serial_print_str("^S Save ^Q Exit ^K Cut ^U Paste");
@@ -188,6 +187,9 @@ fn draw_ui() void {
         serial.serial_print_str("  ");
         serial.serial_print_str(current_status[0..status_len]);
     }
+    serial.serial_clear_line();
+
+    draw_content();
 }
 
 fn draw_text_at(row: usize, col: usize, text: []const u8, attr: u16) void {
