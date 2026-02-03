@@ -480,6 +480,11 @@ pub export fn cmd_cd(args_ptr: [*]const u8, args_len: u32) void {
     }
 
     const path = argv[0];
+    if (common.std_mem_eql(path, ".")) {
+        common.printZ("Wow, you're already here!\n");
+        return;
+    }
+
     if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], path)) |res| {
         if (res.is_dir) {
             common.current_dir_cluster = res.cluster;

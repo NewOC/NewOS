@@ -10,7 +10,8 @@ Comprehensive documentation for all built-in NewOS shell commands.
 |---------|-------------|-------|
 | `help` | Show command list | `help [page]` |
 | `ls` | List files/folders | `ls [path]` |
-| `cd` | Change directory | `cd <dir|..|/>` |
+| `pwd` | Print working directory | `pwd` |
+| `cd` | Change directory | `cd <path>` |
 | `mkdir` | Create directory | `mkdir <name>` |
 | `touch` | Create empty file | `touch <path>` |
 | `edit` | Text editor | `edit <path>` |
@@ -71,14 +72,24 @@ Powers off the system using ACPI commands.
 ### `ls`
 Lists files and directories in the target path or current directory.
 - **Usage:** `ls [path]`
+- **Flags:**
+  - `-l`: Detailed view (if supported)
+  - `-a`: Show hidden files
 - **Examples:**
   - `ls` (Current directory)
   - `ls 123/` (Contents of folder '123')
   - `ls /` (Root directory)
 
+### `pwd`
+Prints the absolute path of the current working directory.
+- **Usage:** `pwd`
+
 ### `cd`
 Changes the current working directory.
-- **Usage:** `cd <dir|..|/>`
+- **Usage:** `cd <path>`
+- **Features:**
+  - Supports absolute paths (starting with `/`) and relative paths.
+  - Supports quoted strings for directory names with spaces (e.g., `cd "New Folder"`).
 - **Navigation:**
   - `cd folder` - Enter a directory.
   - `cd ..` - Go to the parent directory.
