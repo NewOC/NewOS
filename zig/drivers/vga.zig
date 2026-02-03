@@ -6,12 +6,22 @@ pub const MAX_COLS: usize = 80;
 pub const MAX_ROWS: usize = 25;
 pub const DEFAULT_ATTR: u16 = 0x0f00;
 
+pub var current_color: u16 = DEFAULT_ATTR;
+
 pub export var cursor_row: u8 = 0;
 pub export var cursor_col: u8 = 0;
 
 var screen_buffer: [MAX_COLS * MAX_ROWS]u16 = [_]u16{0} ** (MAX_COLS * MAX_ROWS);
 var saved_cursor_row: u8 = 0;
 var saved_cursor_col: u8 = 0;
+
+pub export fn set_color(fg: u8, bg: u8) void {
+    current_color = (@as(u16, bg) << 12) | (@as(u16, fg) << 8);
+}
+
+pub export fn reset_color() void {
+    current_color = DEFAULT_ATTR;
+}
 
 pub export fn save_screen_buffer() void {
     var i: usize = 0;
@@ -35,7 +45,7 @@ pub export fn restore_screen_buffer() void {
 pub export fn clear_screen() void {
     var i: usize = 0;
     while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
-        VIDEO_MEMORY[i] = DEFAULT_ATTR | ' ';
+        VIDEO_MEMORY[i] =  DEFAULT_ATTR | ' ';
     }
     cursor_row = 0;
     cursor_col = 0;
@@ -53,14 +63,12 @@ pub export fn zig_get_cursor_col() u8 { return cursor_col; }
 
 fn scroll() void {
     var i: usize = 0;
-    // Копируем строки 1-24 в 0-23
     while (i < (MAX_ROWS - 1) * MAX_COLS) : (i += 1) {
         VIDEO_MEMORY[i] = VIDEO_MEMORY[i + MAX_COLS];
     }
-    // Очищаем последнюю строку
     i = (MAX_ROWS - 1) * MAX_COLS;
     while (i < MAX_ROWS * MAX_COLS) : (i += 1) {
-        VIDEO_MEMORY[i] = DEFAULT_ATTR | ' ';
+        VIDEO_MEMORY[i] = current_color | ' ';
     }
 }
 
@@ -86,16 +94,15 @@ pub export fn zig_print_char(c: u8) void {
             cursor_col = MAX_COLS - 1;
         }
         const idx = @as(usize, cursor_row) * MAX_COLS + cursor_col;
-        VIDEO_MEMORY[idx] = DEFAULT_ATTR | ' ';
+        VIDEO_MEMORY[idx] = current_color | ' ';
     } else if (c >= 32 and c <= 126) {
-        // Проверка перед печатью символа
         if (cursor_row >= MAX_ROWS) {
             scroll();
             cursor_row = MAX_ROWS - 1;
         }
 
         const idx = @as(usize, cursor_row) * MAX_COLS + cursor_col;
-        VIDEO_MEMORY[idx] = DEFAULT_ATTR | @as(u16, c);
+        VIDEO_MEMORY[idx] = current_color | @as(u16, c);
         
         cursor_col += 1;
         if (cursor_col >= MAX_COLS) {
@@ -111,7 +118,7 @@ pub export fn zig_clear_line(row: u8) void {
     const offset = @as(usize, row) * MAX_COLS;
     var i: usize = 0;
     while (i < MAX_COLS) : (i += 1) {
-        VIDEO_MEMORY[offset + i] = DEFAULT_ATTR | ' ';
+        VIDEO_MEMORY[offset + i] = current_color | ' ';
     }
 }
 

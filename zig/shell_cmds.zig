@@ -13,6 +13,7 @@ const fat = @import("drivers/fat.zig");
 const ata = @import("drivers/ata.zig");
 const edit = @import("commands/edit.zig");
 const rtc = @import("drivers/rtc.zig");
+const sysinfo = @import("commands/sysinfo.zig");
 
 
 /// Execute 'ls' command
@@ -220,4 +221,8 @@ pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const
 
 pub export fn cmd_edit(name_ptr: [*]const u8, name_len: u32) void {
     edit.execute(name_ptr[0..name_len]);
+}
+
+pub export fn cmd_sysinfo() void {
+    sysinfo.execute();
 }

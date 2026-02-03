@@ -31,7 +31,7 @@ start:
     xor bx, bx
     
     mov ah, 0x02            ; Read sectors
-    mov al, 60              ; Number of sectors to read
+    mov al, 127             ; Number of sectors to read
     mov ch, 0               ; Cylinder 0
     mov dh, 0               ; Head 0
     mov cl, 2               ; Start from sector 2

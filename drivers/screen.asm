@@ -51,15 +51,12 @@ print_string:
 print_char:
     pusha
     
-    ; 1. Проверяем Backspace (ASCII 8)
     cmp al, 8
     je .backspace
     
-    ; 2. Проверяем Newline (ASCII 10)
     cmp al, 10
     je .newline
     
-    ; 3. Обычный символ
     movzx ebx, byte [cursor_row]
     imul ebx, MAX_COLS
     movzx ecx, byte [cursor_col]
@@ -74,13 +71,11 @@ print_char:
     cmp byte [cursor_col], MAX_COLS
     jl .done
     
-    ; Если вышли за границу строки - перенос
     jmp .newline
     
 .backspace:
-    ; Логика: если колонка > 0, уменьшаем её на 1
     cmp byte [cursor_col], 0
-    je .done ; Если мы в начале строки, ничего не делаем (или можно подняться на строку вверх)
+    je .done 
     
     dec byte [cursor_col]
     jmp .done

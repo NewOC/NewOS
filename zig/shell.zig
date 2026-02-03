@@ -9,9 +9,11 @@ const versioning = @import("versioning.zig");
 const serial = @import("drivers/serial.zig");
 const fat = @import("drivers/fat.zig");
 const ata = @import("drivers/ata.zig");
+const config = @import("config.zig");
 
 // Shell configuration
-const HISTORY_SIZE = 10;
+const build_config = @import("build_config");
+const HISTORY_SIZE = if (build_config.history_size) |h| h else config.HISTORY_SIZE;
 
 // Command Structure for automated handling and autocomplete
 const Command = struct {
@@ -42,6 +44,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "echo", .help = "echo <text> - Print text", .handler = cmd_handler_echo },
     .{ .name = "time", .help = "Show current system time (RTC)", .handler = cmd_handler_time },
     .{ .name = "mem", .help = "Show memory allocator status", .handler = cmd_handler_mem },
+    .{ .name = "sysinfo", .help = "Show system info", .handler = cmd_handler_sysinfo },
 };
 
 // Local command buffer
@@ -203,7 +206,7 @@ fn save_history_to_disk() void {
             offset += 1;
         }
         
-        _ = fat.write_file(drive, bpb, ".history", join_buf[0..offset]);
+        _ = fat.write_file(drive, bpb, "HISTORY", join_buf[0..offset]);
     }
 }
 
@@ -213,7 +216,7 @@ fn load_history_from_disk() void {
 
     if (fat.read_bpb(drive)) |bpb| {
         var load_buf: [HISTORY_SIZE * 1024]u8 = [_]u8{0} ** (HISTORY_SIZE * 1024);
-        const read = fat.read_file(drive, bpb, ".history", &load_buf);
+        const read = fat.read_file(drive, bpb, "HISTORY", &load_buf);
         if (read <= 0) return;
 
         history_count = 0;
@@ -650,4 +653,8 @@ fn cmd_handler_mem(_: []const u8) void {
 
 fn cmd_handler_time(_: []const u8) void {
     shell_cmds.cmd_time();
+}
+
+fn cmd_handler_sysinfo(_: []const u8) void {
+    shell_cmds.cmd_sysinfo();
 }

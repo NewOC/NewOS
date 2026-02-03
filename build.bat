@@ -25,7 +25,7 @@ if %errorlevel% neq 0 (
 :: Build Zig modules
 echo Building Zig modules...
 pushd zig
-zig build
+zig build %*
 if %errorlevel% neq 0 (
     echo Error building Zig modules!
     popd

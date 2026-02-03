@@ -211,13 +211,40 @@ pub const EntryLocation = struct {
     offset: u32,
 };
 
+pub const FatName = struct {
+    name: []const u8,
+    ext: []const u8,
+};
+
+fn fat_parse_name(name: []const u8) FatName {
+    // Locate the LAST dot to follow standard extensions, 
+    // but handle leading dots specially for Unix-style dotfiles.
+    var last_dot: ?usize = null;
+    var i: usize = 0;
+    while (i < name.len) : (i += 1) {
+        if (name[i] == '.') last_dot = i;
+    }
+
+    if (last_dot) |dot| {
+        // If the ONLY dot is at the start (e.g. ".history" or ".gitignore")
+        // treat it as the filename, with no extension.
+        if (dot == 0) {
+             return FatName{ .name = name, .ext = "" };
+        }
+        
+        return FatName{ .name = name[0..dot], .ext = name[dot+1..] };
+    }
+    
+    return FatName{ .name = name, .ext = "" };
+}
+
 pub fn find_entry_location(drive: ata.Drive, bpb: BPB, name: []const u8) ?EntryLocation {
     var buffer: [512]u8 = undefined;
     var sector = bpb.first_root_dir_sector;
     
-    const dot_pos = common.std_mem_indexOf(u8, name, ".");
-    const name_part = if (dot_pos) |d| name[0..d] else name;
-    const ext_part = if (dot_pos) |d| name[d+1..] else "";
+    const parts = fat_parse_name(name);
+    const name_part = parts.name;
+    const ext_part = parts.ext;
 
     while (sector < bpb.first_data_sector) : (sector += 1) {
         ata.read_sector(drive, sector, &buffer);
@@ -226,19 +253,41 @@ pub fn find_entry_location(drive: ata.Drive, bpb: BPB, name: []const u8) ?EntryL
             if (buffer[i] == 0) return null;
             if (buffer[i] == 0xE5) continue;
             
-            var match = true;
+            // Standard Match
+            var match_standard = true;
             for (0..8) |j| {
                 const c = if (j < name_part.len) toUpper(name_part[j]) else ' ';
-                if (buffer[i + j] != c) { match = false; break; }
+                if (buffer[i + j] != c) { match_standard = false; break; }
             }
-            if (match) {
+            if (match_standard) {
                 for (0..3) |j| {
                     const c = if (j < ext_part.len) toUpper(ext_part[j]) else ' ';
-                    if (buffer[i + 8 + j] != c) { match = false; break; }
+                    if (buffer[i + 8 + j] != c) { match_standard = false; break; }
                 }
             }
-            
-            if (match) return EntryLocation{ .sector = sector, .offset = i };
+            if (match_standard) return EntryLocation{ .sector = sector, .offset = i };
+
+            // Legacy/Buggy Match: Check for Empty Name + Ext (how old code wrote .history)
+            // Only try this if the requested name starts with '.' and has no other dots
+            if (name.len > 1 and name[0] == '.') {
+                const legacy_ext = name[1..];
+                var match_legacy = true;
+                
+                // Name must be all spaces
+                for (0..8) |j| {
+                    if (buffer[i + j] != ' ') { match_legacy = false; break; }
+                }
+
+                if (match_legacy) {
+                    // Ext must match legacy_ext (truncated to 3)
+                    for (0..3) |j| {
+                        const c = if (j < legacy_ext.len) toUpper(legacy_ext[j]) else ' ';
+                        if (buffer[i + 8 + j] != c) { match_legacy = false; break; }
+                    }
+                }
+                
+                if (match_legacy) return EntryLocation{ .sector = sector, .offset = i };
+            }
         }
     }
     return null;
@@ -344,9 +393,9 @@ fn update_root_entry_size(drive: ata.Drive, bpb: BPB, name: []const u8, size: u3
     var buffer: [512]u8 = undefined;
     var sector = bpb.first_root_dir_sector;
     
-    const dot_pos = common.std_mem_indexOf(u8, name, ".");
-    const name_part = if (dot_pos) |d| name[0..d] else name;
-    const ext_part = if (dot_pos) |d| name[d+1..] else "";
+    const parts = fat_parse_name(name);
+    const name_part = parts.name;
+    const ext_part = parts.ext;
 
     while (sector < bpb.first_data_sector) : (sector += 1) {
         ata.read_sector(drive, sector, &buffer);
@@ -469,12 +518,9 @@ fn add_root_entry(drive: ata.Drive, bpb: BPB, name: []const u8, cluster: u32, si
                 for (0..32) |j| buffer[i + j] = 0;
                 
                 // Parse name and extension
-                var name_part = name;
-                var ext_part: []const u8 = "";
-                if (common.std_mem_indexOf(u8, name, ".")) |dot| {
-                    name_part = name[0..dot];
-                    ext_part = name[dot+1..];
-                }
+                const parts = fat_parse_name(name);
+                const name_part = parts.name;
+                const ext_part = parts.ext;
                 
                 // Fill name (8 bytes)
                 var case_bits: u8 = 0;
