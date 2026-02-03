@@ -4,8 +4,8 @@ const ata = @import("../drivers/ata.zig");
 
 pub fn lsdsk() void {
     common.printZ("Scanning for ATA disks...\n");
-    common.printZ("NUM | SIZE (MB) | FILESYSTEM\n");
-    common.printZ("----------------------------\n");
+    common.printZ("NUM | SIZE (MB) | FILESYSTEM         | STATUS\n");
+    common.printZ("----------------------------------------------\n");
 
     var drive_idx: u8 = 0;
     while (drive_idx < 2) : (drive_idx += 1) {
@@ -27,16 +27,25 @@ pub fn lsdsk() void {
             if (buffer[510] == 0x55 and buffer[511] == 0xAA) {
                 // Check for FAT
                 if (common.std_mem_eql(buffer[0x36..0x3E], "FAT12   ")) {
-                    common.printZ("FAT12\n");
+                    common.printZ("FAT12              ");
                 } else if (common.std_mem_eql(buffer[0x36..0x3E], "FAT16   ")) {
-                    common.printZ("FAT16\n");
+                    common.printZ("FAT16              ");
                 } else if (common.std_mem_eql(buffer[0x52..0x5A], "FAT32   ")) {
-                    common.printZ("FAT32\n");
+                    common.printZ("FAT32              ");
                 } else {
-                    common.printZ("Unknown (Bootable)\n");
+                    common.printZ("Unknown            ");
                 }
             } else {
-                common.printZ("None\n");
+                common.printZ("None               ");
+            }
+            
+            common.printZ("| ");
+            if (drive_idx == 0) {
+                common.printZ("System\n");
+            } else if (common.selected_disk == @as(i32, @intCast(drive_idx))) {
+                common.printZ("Active\n");
+            } else {
+                common.printZ("Ready\n");
             }
         }
     }

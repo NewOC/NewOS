@@ -11,6 +11,10 @@ const serial = @import("../drivers/serial.zig");
 
 // --- Global State ---
 pub var selected_disk: i8 = -1; // -1 means RAM FS
+pub var current_dir_cluster: u32 = 0; // 0 = Root on FAT12/16
+pub var current_path: [256]u8 = [_]u8{0} ** 256;
+pub var current_path_len: usize = 0;
+
 /// Low-level character output
 pub fn print_char(c: u8) void {
     vga.zig_print_char(c);
@@ -152,6 +156,11 @@ pub fn startsWithIgnoreCase(a: []const u8, b: []const u8) bool {
         if (asciiLower(a[i]) != asciiLower(b[i])) return false;
     }
     return true;
+}
+
+pub fn copy(dest: []u8, src: []const u8) void {
+    const len = @min(dest.len, src.len);
+    for (0..len) |i| dest[i] = src[i];
 }
 
 /// Format string to buffer. Supports {d} and {s}.

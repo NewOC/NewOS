@@ -110,7 +110,6 @@ export fn kmain() void {
 
     // Main Shell loop
     while (true) {
-        common.printZ("> ");
         read_command();
         execute_command();
     }

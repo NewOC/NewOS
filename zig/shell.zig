@@ -23,34 +23,49 @@ const Command = struct {
 };
 
 const SHELL_COMMANDS = [_]Command{
-    .{ .name = "help", .help = "Show this help message", .handler = cmd_handler_help },
-    .{ .name = "clear", .help = "Clear screen", .handler = cmd_handler_clear },
-    .{ .name = "about", .help = "About NewOS", .handler = cmd_handler_about },
-    .{ .name = "nova", .help = "Start Nova Interpreter", .handler = cmd_handler_nova },
-    .{ .name = "uptime", .help = "Show system uptime", .handler = cmd_handler_uptime },
-    .{ .name = "reboot", .help = "Restart the PC", .handler = cmd_handler_reboot },
-    .{ .name = "shutdown", .help = "Turn off the PC", .handler = cmd_handler_shutdown },
-    .{ .name = "ls", .help = "List files on current disk", .handler = cmd_handler_ls },
-    .{ .name = "lsdsk", .help = "List available disks", .handler = cmd_handler_lsdsk },
-    .{ .name = "mount", .help = "mount <drive> - Select active disk", .handler = cmd_handler_mount },
-    .{ .name = "mkfs-fat12", .help = "mkfs-fat12 <drive> - Format as FAT12", .handler = cmd_handler_mkfs12 },
-    .{ .name = "mkfs-fat16", .help = "mkfs-fat16 <drive> - Format as FAT16", .handler = cmd_handler_mkfs16 },
-    .{ .name = "touch", .help = "touch <file> - Create empty file", .handler = cmd_handler_touch },
-    .{ .name = "write", .help = "write <f> <t> - Write text to file", .handler = cmd_handler_write },
-    .{ .name = "rm", .help = "rm <file> - Delete a file", .handler = cmd_handler_rm },
-    .{ .name = "cat", .help = "cat <file> - Show file contents", .handler = cmd_handler_cat },
-    .{ .name = "edit", .help = "edit <file> - Open text editor", .handler = cmd_handler_edit },
-    .{ .name = "history", .help = "Show command history", .handler = cmd_handler_history },
-    .{ .name = "echo", .help = "echo <text> - Print text", .handler = cmd_handler_echo },
-    .{ .name = "time", .help = "Show current system time (RTC)", .handler = cmd_handler_time },
-    .{ .name = "mem", .help = "Show memory allocator status", .handler = cmd_handler_mem },
-    .{ .name = "sysinfo", .help = "Show system info", .handler = cmd_handler_sysinfo },
+    .{ .name = "help", .help = "Show this help message (Tip: help 2)", .handler = cmd_handler_help },
+    .{ .name = "clear", .help = "Clear screen and reset console state", .handler = cmd_handler_clear },
+    .{ .name = "about", .help = "Show legal information & credits", .handler = cmd_handler_about },
+    .{ .name = "nova", .help = "Start Nova Scripting Interpreter", .handler = cmd_handler_nova },
+    .{ .name = "uptime", .help = "Show system runtime and RTC time", .handler = cmd_handler_uptime },
+    .{ .name = "reboot", .help = "Safely restart the system", .handler = cmd_handler_reboot },
+    .{ .name = "shutdown", .help = "Safely turn off the system (ACPI)", .handler = cmd_handler_shutdown },
+    .{ .name = "ls", .help = "List files/folders in current directory", .handler = cmd_handler_ls },
+    .{ .name = "lsdsk", .help = "List storage devices and partitions", .handler = cmd_handler_lsdsk },
+    .{ .name = "mount", .help = "mount <0|1> - Select active drive", .handler = cmd_handler_mount },
+    .{ .name = "mkdir", .help = "mkdir <name> - Create a new directory", .handler = cmd_handler_mkdir },
+    .{ .name = "md", .help = "Alias for mkdir", .handler = cmd_handler_mkdir },
+    .{ .name = "cd", .help = "cd <dir|..|/> - Change directory", .handler = cmd_handler_cd },
+    .{ .name = "tree", .help = "Display recursive directory structure", .handler = cmd_handler_tree },
+    .{ .name = "mkfs-fat12", .help = "Format drive as FAT12 (legacy)", .handler = cmd_handler_mkfs12 },
+    .{ .name = "mkfs-fat16", .help = "Format drive as FAT16 (standard)", .handler = cmd_handler_mkfs16 },
+    .{ .name = "touch", .help = "Create an empty file", .handler = cmd_handler_touch },
+    .{ .name = "write", .help = "write <f> <t> - Write string to file", .handler = cmd_handler_write },
+    .{ .name = "rm", .help = "rm [-d] [-r] <f|*> - Delete file/dir", .handler = cmd_handler_rm },
+    .{ .name = "cat", .help = "Display text file contents", .handler = cmd_handler_cat },
+    .{ .name = "edit", .help = "Open primitive text editor", .handler = cmd_handler_edit },
+    .{ .name = "history", .help = "Show command history list", .handler = cmd_handler_history },
+    .{ .name = "echo", .help = "Print text to standard output", .handler = cmd_handler_echo },
+    .{ .name = "time", .help = "Show full current RTC date and time", .handler = cmd_handler_time },
+    .{ .name = "mem", .help = "Show memory allocator & heap status", .handler = cmd_handler_mem },
+    .{ .name = "sysinfo", .help = "Display system hardware info", .handler = cmd_handler_sysinfo },
+    .{ .name = "docs", .help = "Show internal documentation topics", .handler = cmd_handler_docs },
+    .{ .name = "cp", .help = "cp <src> <dest> - Copy a file", .handler = cmd_handler_cp },
+    .{ .name = "mv", .help = "mv <src> <dest> - Move or rename file", .handler = cmd_handler_mv },
+    .{ .name = "ren", .help = "Alias for mv (rename)", .handler = cmd_handler_rename },
+    .{ .name = "format", .help = "Low-level drive formatting tool", .handler = cmd_handler_format },
+    .{ .name = "mkfs", .help = "Create filesystem on current drive", .handler = cmd_handler_mkfs },
 };
 
 // Local command buffer
 var cmd_buffer: [1024]u8 = [_]u8{0} ** 1024;
 var cmd_len: u16 = 0;
 var cmd_pos: u16 = 0;
+
+pub export fn shell_clear_history() void {
+    history_count = 0;
+    history_index = 0;
+}
 
 // Command history state
 var history: [HISTORY_SIZE][1024]u8 = [_][1024]u8{[_]u8{0} ** 1024} ** HISTORY_SIZE;
@@ -82,6 +97,7 @@ pub export fn read_command() void {
         history_loaded = true;
     }
 
+    display_prompt();
     prompt_row = vga.zig_get_cursor_row();
     prompt_col = vga.zig_get_cursor_col();
     refresh_line(); // Initial draw of status bar
@@ -206,7 +222,7 @@ fn save_history_to_disk() void {
             offset += 1;
         }
         
-        _ = fat.write_file(drive, bpb, "HISTORY", join_buf[0..offset]);
+        _ = fat.write_file(drive, bpb, 0, "HISTORY", join_buf[0..offset]);
     }
 }
 
@@ -216,7 +232,7 @@ fn load_history_from_disk() void {
 
     if (fat.read_bpb(drive)) |bpb| {
         var load_buf: [HISTORY_SIZE * 1024]u8 = [_]u8{0} ** (HISTORY_SIZE * 1024);
-        const read = fat.read_file(drive, bpb, "HISTORY", &load_buf);
+        const read = fat.read_file(drive, bpb, 0, "HISTORY", &load_buf);
         if (read <= 0) return;
 
         history_count = 0;
@@ -276,14 +292,14 @@ fn refresh_line() void {
     
     // 2. Serial Update (Terminal-friendly: \r + print whole line)
     serial.serial_print_char('\r');
-    serial.serial_print_str("> ");
+    display_prompt_serial();
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
     // Clear tail on serial (3 spaces is enough for small deltas)
     serial.serial_print_str("   "); 
     
     // 3. Move cursor back to position on serial (approximate)
     serial.serial_print_char('\r');
-    serial.serial_print_str("> ");
+    display_prompt_serial();
     serial.serial_print_str(cmd_buffer[0..saved_pos]);
 
     cmd_pos = saved_pos;
@@ -373,6 +389,15 @@ fn autocomplete() void {
     const current_prefix = auto_prefix[0..auto_prefix_len];
     var total_matches: usize = 0;
 
+    var is_cd_cmd = false;
+    if (auto_start_pos > 0) {
+        var s_c: usize = 0;
+        while (s_c < cmd_len and cmd_buffer[s_c] == ' ') : (s_c += 1) {}
+        var e_c = s_c;
+        while (e_c < cmd_len and cmd_buffer[e_c] != ' ') : (e_c += 1) {}
+        if (common.std_mem_eql(cmd_buffer[s_c..e_c], "cd")) is_cd_cmd = true;
+    }
+
     if (auto_start_pos == 0) {
         for (SHELL_COMMANDS) |cmd| {
             if (common.startsWithIgnoreCase(cmd.name, current_prefix)) total_matches += 1;
@@ -381,16 +406,40 @@ fn autocomplete() void {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
             var d_buf: [512]u8 = undefined;
-            var sector = bpb.first_root_dir_sector;
-            while (sector < bpb.first_data_sector) : (sector += 1) {
-                ata.read_sector(drive, sector, &d_buf);
-                var j: usize = 0;
-                while (j < 512) : (j += 32) {
-                    if (d_buf[j] == 0) break;
-                    if (d_buf[j] == 0xE5) continue;
-                    if (d_buf[j+11] == 0x0F) continue;
-                    const name = get_name_from_entry(d_buf[j..j+32]);
-                    if (common.startsWithIgnoreCase(name.buf[0..name.len], current_prefix)) total_matches += 1;
+            if (common.current_dir_cluster == 0) {
+                var sector = bpb.first_root_dir_sector;
+                while (sector < bpb.first_data_sector) : (sector += 1) {
+                    ata.read_sector(drive, sector, &d_buf);
+                    var j: usize = 0;
+                    while (j < 512) : (j += 32) {
+                        if (d_buf[j] == 0) break;
+                        if (d_buf[j] == 0xE5) continue;
+                        if (d_buf[j+11] == 0x0F) continue;
+                        if (is_cd_cmd and (d_buf[j+11] & 0x10) == 0) continue;
+                        const name = fat.get_name_from_raw(d_buf[j .. j + 32]);
+                        if (common.startsWithIgnoreCase(name.buf[0..name.len], current_prefix)) total_matches += 1;
+                    }
+                }
+            } else {
+                var current = common.current_dir_cluster;
+                const eof_val = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
+                while (current < eof_val) {
+                    const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
+                    var s: u32 = 0;
+                    while (s < bpb.sectors_per_cluster) : (s += 1) {
+                        ata.read_sector(drive, lba + s, &d_buf);
+                        var j: usize = 0;
+                        while (j < 512) : (j += 32) {
+                            if (d_buf[j] == 0) break;
+                            if (d_buf[j] == 0xE5) continue;
+                            if (d_buf[j+11] == 0x0F) continue;
+                            if (is_cd_cmd and (d_buf[j+11] & 0x10) == 0) continue;
+                            const name = fat.get_name_from_raw(d_buf[j .. j + 32]);
+                            if (common.startsWithIgnoreCase(name.buf[0..name.len], current_prefix)) total_matches += 1;
+                        }
+                    }
+                    current = fat.get_fat_entry(drive, bpb, current);
+                    if (current == 0) break;
                 }
             }
         }
@@ -423,23 +472,54 @@ fn autocomplete() void {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
             var d_buf: [512]u8 = undefined;
-            var sector = bpb.first_root_dir_sector;
-            outer: while (sector < bpb.first_data_sector) : (sector += 1) {
-                ata.read_sector(drive, sector, &d_buf);
-                var j: usize = 0;
-                while (j < 512) : (j += 32) {
-                    if (d_buf[j] == 0) break;
-                    if (d_buf[j] == 0xE5) continue;
-                    if (d_buf[j+11] == 0x0F) continue;
-                    const name = get_name_from_entry(d_buf[j..j+32]);
-                    if (common.startsWithIgnoreCase(name.buf[0..name.len], current_prefix)) {
-                        if (current_match_idx == match_to_pick) {
-                            picked_len = @min(31, name.len);
-                            for (0..picked_len) |p| picked_name[p] = name.buf[p];
-                            break :outer;
+            if (common.current_dir_cluster == 0) {
+                var sector = bpb.first_root_dir_sector;
+                outer: while (sector < bpb.first_data_sector) : (sector += 1) {
+                    ata.read_sector(drive, sector, &d_buf);
+                    var j: usize = 0;
+                    while (j < 512) : (j += 32) {
+                        if (d_buf[j] == 0) break;
+                        if (d_buf[j] == 0xE5) continue;
+                        if (d_buf[j+11] == 0x0F) continue;
+                        if (is_cd_cmd and (d_buf[j+11] & 0x10) == 0) continue;
+                        const name = fat.get_name_from_raw(d_buf[j .. j + 32]);
+                        if (common.startsWithIgnoreCase(name.buf[0..name.len], current_prefix)) {
+                            if (current_match_idx == match_to_pick) {
+                                picked_len = @min(31, name.len);
+                                for (0..picked_len) |p| picked_name[p] = name.buf[p];
+                                break :outer;
+                            }
+                            current_match_idx += 1;
                         }
-                        current_match_idx += 1;
                     }
+                }
+            } else {
+                var current = common.current_dir_cluster;
+                const eof_val = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
+                outer: while (current < eof_val) {
+                    const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
+                    var s: u32 = 0;
+                    while (s < bpb.sectors_per_cluster) : (s += 1) {
+                        ata.read_sector(drive, lba + s, &d_buf);
+                        var j: usize = 0;
+                        while (j < 512) : (j += 32) {
+                            if (d_buf[j] == 0) break;
+                            if (d_buf[j] == 0xE5) continue;
+                            if (d_buf[j+11] == 0x0F) continue;
+                            if (is_cd_cmd and (d_buf[j+11] & 0x10) == 0) continue;
+                            const name = fat.get_name_from_raw(d_buf[j .. j + 32]);
+                            if (common.startsWithIgnoreCase(name.buf[0..name.len], current_prefix)) {
+                                if (current_match_idx == match_to_pick) {
+                                    picked_len = @min(31, name.len);
+                                    for (0..picked_len) |p| picked_name[p] = name.buf[p];
+                                    break :outer;
+                                }
+                                current_match_idx += 1;
+                            }
+                        }
+                    }
+                    current = fat.get_fat_entry(drive, bpb, current);
+                    if (current == 0) break;
                 }
             }
         }
@@ -461,30 +541,6 @@ fn autocomplete() void {
     }
 }
 
-fn get_name_from_entry(entry: []const u8) struct { buf: [13]u8, len: usize } {
-    var res: [13]u8 = [_]u8{0} ** 13;
-    var n_len: usize = 0;
-    const case_bits = entry[12];
-    const name_lower = (case_bits & 0x08) != 0;
-    const ext_lower = (case_bits & 0x10) != 0;
-    for (0..8) |k| {
-        const c = entry[k];
-        if (c == ' ') break;
-        res[n_len] = if (name_lower and c >= 'A' and c <= 'Z') c + 32 else c;
-        n_len += 1;
-    }
-    if (entry[8] != ' ') {
-        res[n_len] = '.';
-        n_len += 1;
-        for (0..3) |k| {
-            const c = entry[8 + k];
-            if (c == ' ') break;
-            res[n_len] = if (ext_lower and c >= 'A' and c <= 'Z') c + 32 else c;
-            n_len += 1;
-        }
-    }
-    return .{ .buf = res, .len = n_len };
-}
 
 /// Dispatch commands
 pub export fn execute_command() void {
@@ -492,13 +548,19 @@ pub export fn execute_command() void {
     if (cmd_raw.len == 0) return;
 
     // Find the end of command name
-    var space_idx: usize = 0;
-    while (space_idx < cmd_raw.len and cmd_raw[space_idx] != ' ') : (space_idx += 1) {}
-    const cmd_name = cmd_raw[0..space_idx];
+    var i: usize = 0;
+    while (i < cmd_raw.len and cmd_raw[i] != ' ') : (i += 1) {}
+    const cmd_name = cmd_raw[0..i];
+    
+    // Skip spaces to find start of args
+    while (i < cmd_raw.len and cmd_raw[i] == ' ') : (i += 1) {}
+    const args_only = cmd_raw[i..];
 
     for (SHELL_COMMANDS) |sc| {
         if (common.std_mem_eql(sc.name, cmd_name)) {
-            sc.handler(cmd_raw);
+            // Special case: help needs full command for pagination logic 
+            // OR we fix help to use args_only. Let's fix help.
+            sc.handler(args_only);
             return;
         }
     }
@@ -509,17 +571,45 @@ pub export fn execute_command() void {
 }
 
 // Handler functions for commands
-fn cmd_handler_help(_: []const u8) void {
-    common.printZ("Commands:\n");
-    for (SHELL_COMMANDS) |cmd| {
+fn cmd_handler_help(args: []const u8) void {
+    var page: usize = 1;
+    const arg = common.trim(args);
+    if (arg.len > 0 and arg[0] >= '0' and arg[0] <= '9') {
+        page = @intCast(arg[0] - '0');
+        if (page == 0) page = 1;
+    }
+
+    const items_per_page = 10;
+    const total_pages = (SHELL_COMMANDS.len + items_per_page - 1) / items_per_page;
+    
+    if (page > total_pages) page = total_pages;
+
+    common.printZ("Commands (Page ");
+    common.printNum(@intCast(page));
+    common.printZ("/");
+    common.printNum(@intCast(total_pages));
+    common.printZ("):\n");
+
+    const start = (page - 1) * items_per_page;
+    const end = @min(start + items_per_page, SHELL_COMMANDS.len);
+
+    var i = start;
+    while (i < end) : (i += 1) {
+        const cmd = SHELL_COMMANDS[i];
         common.printZ("  ");
         common.printZ(cmd.name);
-        // Padding for alignment
+        // Padding
         var p = cmd.name.len;
         while (p < 15) : (p += 1) common.print_char(' ');
         common.printZ("- ");
         common.printZ(cmd.help);
         common.printZ("\n");
+    }
+    
+    if (page < total_pages) {
+        common.printZ("Tip: Use 'help ");
+        common.printNum(@intCast(page + 1));
+        common.printZ("' for more commands.\n");
     }
     common.printZ("\n");
 }
@@ -552,71 +642,67 @@ fn cmd_handler_shutdown(_: []const u8) void {
     shell_cmds.cmd_shutdown();
 }
 
-fn cmd_handler_ls(_: []const u8) void {
-    shell_cmds.cmd_ls();
+fn cmd_handler_ls(args: []const u8) void {
+    shell_cmds.cmd_ls(args.ptr, @intCast(args.len));
 }
 
 fn cmd_handler_lsdsk(_: []const u8) void {
     shell_cmds.cmd_lsdsk();
 }
 
-fn cmd_handler_mount(full: []const u8) void {
-    if (full.len > 6) {
-        const arg = full[6..];
-        shell_cmds.cmd_mount(arg.ptr, @intCast(arg.len));
+fn cmd_handler_mount(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_mount(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: mount <drive>\n"); }
 }
 
-fn cmd_handler_mkfs12(full: []const u8) void {
-    if (full.len > 11) {
-        const arg = full[11..];
-        shell_cmds.cmd_mkfs_fat12(arg.ptr, @intCast(arg.len));
+fn cmd_handler_mkfs12(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_mkfs_fat12(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: mkfs-fat12 <drive>\n"); }
 }
 
-fn cmd_handler_mkfs16(full: []const u8) void {
-    if (full.len > 11) {
-        const arg = full[11..];
-        shell_cmds.cmd_mkfs_fat16(arg.ptr, @intCast(arg.len));
+fn cmd_handler_mkfs16(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_mkfs_fat16(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: mkfs-fat16 <drive>\n"); }
 }
 
-fn cmd_handler_touch(full: []const u8) void {
-    if (full.len > 6) {
-        const arg = full[6..];
-        shell_cmds.cmd_touch(arg.ptr, @intCast(arg.len));
+fn cmd_handler_touch(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_touch(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: touch <file>\n"); }
 }
 
-fn cmd_handler_write(full: []const u8) void {
-    if (full.len > 6) {
-        const remaining = full[6..];
-        if (common.std_mem_indexOf(u8, remaining, " ")) |space| {
-            const filename = remaining[0..space];
-            const text = remaining[space+1..];
-            shell_cmds.cmd_write(filename.ptr, @intCast(filename.len), text.ptr, @intCast(text.len));
-        } else { common.printZ("Usage: write <file> <text>\n"); }
-    } else { common.printZ("Usage: write <file> <text>\n"); }
+fn cmd_handler_write(args: []const u8) void {
+    if (args.len > 0) {
+        if (common.std_mem_indexOf(u8, args, " ")) |space| {
+            const name = args[0..space];
+            const data = args[space + 1 ..];
+            shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len));
+        } else {
+            common.printZ("Usage: write <file> <text>\n");
+        }
+    } else {
+        common.printZ("Usage: write <file> <text>\n");
+    }
 }
 
-fn cmd_handler_rm(full: []const u8) void {
-    if (full.len > 3) {
-        const arg = full[3..];
-        shell_cmds.cmd_rm(arg.ptr, @intCast(arg.len));
+fn cmd_handler_rm(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_rm(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: rm <file>\n"); }
 }
 
-fn cmd_handler_cat(full: []const u8) void {
-    if (full.len > 4) {
-        const arg = full[4..];
-        shell_cmds.cmd_cat(arg.ptr, @intCast(arg.len));
+fn cmd_handler_cat(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_cat(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: cat <file>\n"); }
 }
 
-fn cmd_handler_edit(full: []const u8) void {
-    if (full.len > 5) {
-        const arg = full[5..];
-        shell_cmds.cmd_edit(arg.ptr, @intCast(arg.len));
+fn cmd_handler_edit(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_edit(args.ptr, @intCast(args.len));
     } else { common.printZ("Usage: edit <file>\n"); }
 }
 
@@ -630,11 +716,8 @@ fn cmd_handler_history(_: []const u8) void {
     }
 }
 
-fn cmd_handler_echo(full: []const u8) void {
-    if (full.len > 5) {
-        const text = full[5..];
-        shell_cmds.cmd_echo(text.ptr, @intCast(text.len));
-    }
+fn cmd_handler_echo(args: []const u8) void {
+    shell_cmds.cmd_echo(args.ptr, @intCast(args.len));
 }
 
 fn cmd_handler_mem(_: []const u8) void {
@@ -657,4 +740,73 @@ fn cmd_handler_time(_: []const u8) void {
 
 fn cmd_handler_sysinfo(_: []const u8) void {
     shell_cmds.cmd_sysinfo();
+}
+
+fn cmd_handler_docs(args: []const u8) void {
+    shell_cmds.cmd_docs(args.ptr, @intCast(args.len));
+}
+
+fn cmd_handler_cp(args: []const u8) void {
+    shell_cmds.cmd_cp(args.ptr, @intCast(args.len));
+}
+
+fn cmd_handler_mv(args: []const u8) void {
+    shell_cmds.cmd_mv(args.ptr, @intCast(args.len));
+}
+
+fn cmd_handler_rename(args: []const u8) void {
+    shell_cmds.cmd_rename(args.ptr, @intCast(args.len));
+}
+
+fn cmd_handler_format(args: []const u8) void {
+    shell_cmds.cmd_format(args.ptr, @intCast(args.len));
+}
+
+fn cmd_handler_mkfs(args: []const u8) void {
+    shell_cmds.cmd_mkfs(args.ptr, @intCast(args.len));
+}
+fn cmd_handler_mkdir(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_mkdir(args.ptr, @intCast(args.len));
+    } else { common.printZ("Usage: mkdir <name>\n"); }
+}
+
+fn cmd_handler_cd(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_cd(args.ptr, @intCast(args.len));
+    } else {
+        // cd with no args goes to root
+        shell_cmds.cmd_cd("/".ptr, 1); 
+    }
+}
+
+fn cmd_handler_tree(_: []const u8) void {
+    shell_cmds.cmd_tree();
+}
+
+fn display_prompt() void {
+    if (vga.zig_get_cursor_col() > 0) common.printZ("\n");
+    if (common.selected_disk >= 0) {
+        common.print_char(@intCast(@as(u8, @intCast(common.selected_disk)) + '0'));
+        common.print_char(':');
+    }
+    if (common.current_path_len == 0) {
+        common.printZ("/");
+    } else {
+        common.printZ(common.current_path[0..common.current_path_len]);
+    }
+    common.printZ("> ");
+}
+
+fn display_prompt_serial() void {
+    if (common.selected_disk >= 0) {
+        serial.serial_print_char(@intCast(@as(u8, @intCast(common.selected_disk)) + '0'));
+        serial.serial_print_char(':');
+    }
+    if (common.current_path_len == 0) {
+        serial.serial_print_str("/");
+    } else {
+        serial.serial_print_str(common.current_path[0..common.current_path_len]);
+    }
+    serial.serial_print_str("> ");
 }

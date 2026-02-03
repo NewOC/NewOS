@@ -39,7 +39,7 @@ pub fn execute(name: []const u8) void {
     if (common.selected_disk >= 0) {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            const read = fat.read_file(drive, bpb, name, &buffer);
+            const read = fat.read_file(drive, bpb, common.current_dir_cluster, name, &buffer);
             if (read >= 0) buf_len = @intCast(read);
         }
     }
@@ -249,7 +249,7 @@ fn save_file() void {
     if (common.selected_disk >= 0) {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            _ = fat.write_file(drive, bpb, filename[0..filename_len], buffer[0..buf_len]);
+            _ = fat.write_file(drive, bpb, common.current_dir_cluster, filename[0..filename_len], buffer[0..buf_len]);
             is_modified = false;
         }
     }
