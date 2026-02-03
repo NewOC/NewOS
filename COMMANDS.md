@@ -54,3 +54,5 @@
 
 ---
 *Note: All file system commands support hierarchical paths (absolute and relative), `.` (current), `..` (parent) navigation, and quoted strings for names with spaces (e.g., `cd "New Folder"`).*
+
+*Redirection: Most commands support output redirection using `>` (e.g., `ls > list.txt`, `help > manual.txt`).*
