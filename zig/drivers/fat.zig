@@ -406,12 +406,6 @@ pub fn resolve_full_path(drive: ata.Drive, bpb: BPB, start_cluster: u32, start_p
             res.is_dir = (entry.attr & 0x10) != 0;
 
             // Append component to res.path
-            const name_info = get_name_from_raw(entry.name[0..8]); // This is not quite right for LFN, but find_entry_literal uses the real name.
-            // Wait, I should use the component name as it was matched, but normalized.
-            // Actually, it's better to use the canonical name from the directory entry if possible.
-            // But for now, let's use the component as provided or matched.
-
-            // Let's just use component for now to keep it simple.
             if (res.path_len + 1 + component.len < 256) {
                 res.path[res.path_len] = '/';
                 res.path_len += 1;
