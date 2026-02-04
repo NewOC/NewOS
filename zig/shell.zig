@@ -115,10 +115,10 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "abort", .help = "Trigger a manual kernel panic", .handler = cmd_handler_abort },
     .{ .name = "invalid_op", .help = "Trigger an Invalid Opcode exception", .handler = cmd_handler_invalid_op },
     .{ .name = "stack_overflow", .help = "Trigger a Double Fault via stack overflow", .handler = cmd_handler_stack_overflow },
-    .{ .name = "page_fault", .help = "Trigger a Page Fault exception", .handler = cmd_handler_page_fault },
-    .{ .name = "gpf", .help = "Trigger a General Protection Fault", .handler = cmd_handler_gpf },
-    .{ .name = "test_malloc", .help = "Test demand paging with large allocation", .handler = cmd_handler_test_malloc },
-    .{ .name = "test_null", .help = "Test NULL pointer protection", .handler = cmd_handler_test_null },
+    .{ .name = "page_fault", .help = "Trigger a Page Fault exception", .handler = crash_suite.cmd_handler_page_fault },
+    .{ .name = "gpf", .help = "Trigger a General Protection Fault", .handler = crash_suite.cmd_handler_gpf },
+    .{ .name = "test_malloc", .help = "Test demand paging with large allocation", .handler = crash_suite.cmd_handler_test_malloc },
+    .{ .name = "test_null", .help = "Test NULL pointer protection", .handler = crash_suite.cmd_handler_test_null },
 } else [_]Command{});
 
 // Local command buffer

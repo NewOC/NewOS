@@ -680,6 +680,7 @@ pub fn cmd_test_malloc() callconv(.c) void {
 
 pub fn cmd_test_null() callconv(.c) void {
     common.printZ("Dereferencing NULL pointer (0x0)...\n");
-    const ptr = @as(*volatile u32, @ptrFromInt(0));
+    // Using *allowzero to satisfy Zig's strict NULL pointer checks.
+    const ptr = @as(*allowzero volatile u32, @ptrFromInt(0));
     _ = ptr.*;
 }

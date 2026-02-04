@@ -30,6 +30,7 @@ comptime {
 // External shell functions (exported by shell.zig)
 extern fn read_command() void;
 extern fn execute_command() void;
+extern fn print_welcome() void;
 
 /// Kernel Panic Handler (exported for ASM use)
 export fn kernel_panic(msg_ptr: [*]const u8, msg_len: usize) noreturn {
@@ -43,17 +44,22 @@ pub fn panic(msg: []const u8) noreturn {
 
 // --- Kernel Entry Point ---
 export fn kmain() void {
+    asm volatile ("cli");
+
     // 1. Initialize PMM, Paging & Heap
     memory.pmm.init();
     memory.init_paging();
 
     // Ensure VGA is in a valid state after paging enabled
     const vga = @import("drivers/vga.zig");
-    vga.current_color = 0x0F00; // Explicitly set White on Black
+    vga.reset_color();
     vga.clear_screen();
+    print_welcome();
 
     memory.heap.init();
     
+    asm volatile ("sti");
+
     // 2. Initialize timer and interrupt controllers
     // Initialize file system
     shell_cmds.zig_init();
