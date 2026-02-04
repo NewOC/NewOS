@@ -5,13 +5,8 @@ pub const Spinlock = struct {
     lock: u32 = 0,
 
     pub fn acquire(self: *Spinlock) void {
-        while (true) {
-            if (@atomicRmw(u32, &self.lock, .Xchg, 1, .seq_cst) == 0) {
-                return;
-            }
-            while (@atomicLoad(u32, &self.lock, .seq_cst) != 0) {
-                asm volatile ("pause");
-            }
+        while (@atomicRmw(u32, &self.lock, .Xchg, 1, .seq_cst) != 0) {
+            asm volatile ("pause");
         }
     }
 

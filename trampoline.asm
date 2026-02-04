@@ -5,6 +5,8 @@
 section .text
 global trampoline_start
 global trampoline_end
+global ap_stack_ptr
+global ap_main_ptr
 
 trampoline_start:
     cli

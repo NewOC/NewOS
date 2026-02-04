@@ -104,6 +104,9 @@ export fn ap_main() callconv(.c) void {
 
     apic.init_lapic();
 
+    // Signal to Master that we have booted and read trampoline parameters
+    @atomicStore(u32, &apic.ap_boot_handshake, 1, .seq_cst);
+
     // Each AP enters the polling loop
     ap_polling_loop();
 }

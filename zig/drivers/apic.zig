@@ -37,6 +37,10 @@ pub export fn lapic_eoi() void {
 
 extern const trampoline_start: anyopaque;
 extern const trampoline_end: anyopaque;
+extern var ap_stack_ptr: u32;
+extern var ap_main_ptr: u32;
+
+pub var ap_boot_handshake: volatile u32 = 0;
 
 pub fn boot_aps(ap_main: *const fn() callconv(.c) void) void {
     const trampoline_addr: usize = 0x8000;
@@ -49,19 +53,9 @@ pub fn boot_aps(ap_main: *const fn() callconv(.c) void) void {
     const src = @as([*]const u8, @ptrFromInt(start_ptr));
     for (0..len) |i| dest[i] = src[i];
 
-    // Offsets in trampoline.asm
-    // ap_stack_ptr is dd 0, ap_main_ptr is dd 0 at the end (before trampoline_end)
-    // Actually I should use more reliable offsets.
-    // Let's find them by searching for specific markers or just knowing the layout.
-    // In my trampoline.asm:
-    // gdt_ap: 8*3 = 24 bytes
-    // gdt_descriptor_ap: 6 bytes (padded to 8 or more)
-    // ap_stack_ptr: 4 bytes
-    // ap_main_ptr: 4 bytes
-
-    // Actually, let's just use fixed offsets from the end of the trampoline
-    const ap_stack_ptr_addr = trampoline_addr + len - 8;
-    const ap_main_ptr_addr = trampoline_addr + len - 4;
+    // Get absolute addresses of parameters in the trampoline at 0x8000
+    const ap_stack_ptr_addr = trampoline_addr + (@intFromPtr(&ap_stack_ptr) - start_ptr);
+    const ap_main_ptr_addr = trampoline_addr + (@intFromPtr(&ap_main_ptr) - start_ptr);
 
     // 2. Iterate through CPUs (except Master)
     var i: u32 = 1;
@@ -73,8 +67,10 @@ pub fn boot_aps(ap_main: *const fn() callconv(.c) void) void {
         const stack = @import("../memory.zig").heap.alloc(stack_size) orelse continue;
         const stack_top = @intFromPtr(stack) + stack_size;
 
-        @as(*u32, @ptrFromInt(ap_stack_ptr_addr)).* = @intCast(stack_top);
-        @as(*u32, @ptrFromInt(ap_main_ptr_addr)).* = @intFromPtr(ap_main);
+        @as(*volatile u32, @ptrFromInt(ap_stack_ptr_addr)).* = @intCast(stack_top);
+        @as(*volatile u32, @ptrFromInt(ap_main_ptr_addr)).* = @intFromPtr(ap_main);
+
+        @atomicStore(u32, &ap_boot_handshake, 0, .seq_cst);
 
         // Send INIT IPI
         lapic_write(LAPIC_ICRHI, @as(u32, cpu_id) << 24);
@@ -83,8 +79,14 @@ pub fn boot_aps(ap_main: *const fn() callconv(.c) void) void {
 
         // Send SIPI
         lapic_write(LAPIC_ICRHI, @as(u32, cpu_id) << 24);
-        lapic_write(LAPIC_ICRLO, 0x00000600 | (trampoline_addr >> 12)); // SIPI, vector = 0x08
-        common.sleep(1);
+        lapic_write(LAPIC_ICRLO, 0x00000600 | (trampoline_addr >> 12)); // SIPI
+
+        // Wait for AP to signal it has booted and read its parameters
+        var timeout: u32 = 1000;
+        while (@atomicLoad(u32, &ap_boot_handshake, .seq_cst) == 0 and timeout > 0) {
+            common.sleep(1);
+            timeout -= 1;
+        }
     }
 }
 
