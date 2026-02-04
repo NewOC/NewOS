@@ -639,8 +639,9 @@ pub fn cmd_stack_overflow() callconv(.c) void {
 
 pub fn cmd_page_fault() callconv(.c) void {
     common.printZ("Accessing poison address 0xDEADC0DE...\n");
-    // Create a pointer to our magic address
-    const ptr = @as(*volatile u32, @ptrFromInt(0xDEADC0DE));
+    // Create a pointer to our magic address.
+    // We use align(1) because 0xDEADC0DE is not 4-byte aligned.
+    const ptr = @as(*align(1) volatile u32, @ptrFromInt(0xDEADC0DE));
     // Try to write data there.
     // Since we only mapped the first 16MB, this address will trigger a Page Fault.
     ptr.* = 0x1337;
