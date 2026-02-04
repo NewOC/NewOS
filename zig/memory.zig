@@ -12,6 +12,45 @@ extern const ebss: anyopaque;
 var bitmap: [BITMAP_SIZE]u8 = [_]u8{0} ** BITMAP_SIZE;
 var last_free_page: u32 = 0;
 
+/// Paging structures
+const PageDirectory = [1024]u32;
+const PageTable = [1024]u32;
+
+var page_directory: PageDirectory align(4096) = [_]u32{0} ** 1024;
+var page_tables: [4]PageTable align(4096) = [_]PageTable{[_]u32{0} ** 1024} ** 4;
+
+pub fn init_paging() void {
+    // 1. Prepare Page Tables (Identity Map first 16MB)
+    for (0..4) |t| {
+        for (0..1024) |i| {
+            const addr = (t * 1024 + i) * PAGE_SIZE;
+
+            // NULL protection: first page (0x0000 - 0x0FFF) is NOT present
+            if (t == 0 and i == 0) {
+                page_tables[t][i] = 0; // Present = 0
+            } else {
+                page_tables[t][i] = @as(u32, @intCast(addr)) | 0x03; // Present + R/W
+            }
+        }
+        // 2. Map Page Table into Page Directory
+        page_directory[t] = @as(u32, @intCast(@intFromPtr(&page_tables[t]))) | 0x03; // Present + R/W
+    }
+
+    // 3. Enable Paging
+    const pd_addr = @intFromPtr(&page_directory);
+    asm volatile (
+        \\mov %[pd], %%cr3
+        \\mov %%cr0, %%eax
+        \\or $0x80000000, %%eax
+        \\mov %%eax, %%cr0
+        \\jmp 1f
+        \\1:
+        :
+        : [pd] "r" (pd_addr)
+        : "eax", "memory"
+    );
+}
+
 /// Physical Memory Manager (PMM)
 pub const pmm = struct {
     pub fn init() void {

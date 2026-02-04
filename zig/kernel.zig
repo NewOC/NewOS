@@ -43,8 +43,9 @@ pub fn panic(msg: []const u8) noreturn {
 
 // --- Kernel Entry Point ---
 export fn kmain() void {
-    // 1. Initialize PMM & Heap
+    // 1. Initialize PMM, Paging & Heap
     memory.pmm.init();
+    memory.init_paging();
     memory.heap.init();
     
     // 2. Initialize timer and interrupt controllers
