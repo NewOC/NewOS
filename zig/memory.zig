@@ -4,6 +4,8 @@ const config = @import("config.zig");
 
 pub const PAGE_SIZE = 4096;
 pub const MAX_MEMORY = 128 * 1024 * 1024; // 128MB
+pub const POISON_ADDRESS = 0xDEADC0DE;
+pub const RESERVED_HIGH_BASE = 0xF0000000;
 pub const TOTAL_PAGES = MAX_MEMORY / PAGE_SIZE;
 pub const BITMAP_SIZE = TOTAL_PAGES / 8;
 
@@ -21,8 +23,9 @@ var page_directory: PageDirectory align(4096) = [_]u32{0} ** 1024;
 var page_tables: [32]PageTable align(4096) = [_]PageTable{[_]u32{0} ** 1024} ** 32;
 
 pub fn init_paging() void {
-    // 1. Prepare Page Tables (Identity Map first 128MB)
-    for (0..32) |t| {
+    // 1. Prepare Page Tables (Identity Map first 16MB)
+    // We map only 4 tables initially as requested.
+    for (0..4) |t| {
         for (0..1024) |i| {
             const addr = (t * 1024 + i) * PAGE_SIZE;
 
@@ -51,6 +54,40 @@ pub fn init_paging() void {
         : [pd] "r" (pd_addr)
         : "memory"
     );
+}
+
+/// Map a virtual page to a physical frame on demand
+pub fn map_page(vaddr: usize) bool {
+    // 1. Check for reserved/poison addresses
+    if (vaddr >= RESERVED_HIGH_BASE) return false;
+
+    // Check if the address falls into the same page as our poison label
+    if ((vaddr & 0xFFFFF000) == (POISON_ADDRESS & 0xFFFFF000)) {
+        return false;
+    }
+
+    const pd_idx = vaddr >> 22;
+    const pt_idx = (vaddr >> 12) & 0x3FF;
+
+    // 2. Support mapping up to 128MB (32 page tables)
+    if (pd_idx >= 32) return false;
+
+    // 1. Ensure Page Table is present in Page Directory
+    if ((page_directory[pd_idx] & 0x01) == 0) {
+        page_directory[pd_idx] = @as(u32, @intCast(@intFromPtr(&page_tables[pd_idx]))) | 0x03; // Present + R/W
+    }
+
+    // 2. Allocate a physical frame from PMM
+    if (pmm.alloc_page()) |paddr| {
+        // 3. Map virtual page to physical frame
+        page_tables[pd_idx][pt_idx] = @as(u32, @intCast(paddr)) | 0x03; // Present + R/W
+
+        // 4. Flush TLB for this address
+        asm volatile ("invlpg (%[addr])" : : [addr] "r" (vaddr) : "memory");
+        return true;
+    }
+
+    return false;
 }
 
 /// Physical Memory Manager (PMM)

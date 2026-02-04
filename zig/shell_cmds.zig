@@ -650,3 +650,30 @@ pub fn cmd_page_fault() callconv(.c) void {
 pub fn cmd_gpf() callconv(.c) void {
     exceptions.crash_gpf();
 }
+
+pub fn cmd_test_malloc() callconv(.c) void {
+    const size = 8 * 1024 * 1024; // 8MB
+    common.printZ("Allocating 8MB via heap.alloc...\n");
+    const ptr = @import("memory.zig").heap.alloc(size);
+
+    if (ptr) |p| {
+        common.printZ("Allocated at 0x");
+        common.printNum(@intCast(@intFromPtr(p)));
+        common.printZ("\nWriting to the end of the block (will trigger #PF and demand paging)...\n");
+
+        const last_byte_vaddr = @intFromPtr(p) + size - 1;
+        const last_byte_ptr = @as(*volatile u8, @ptrFromInt(last_byte_vaddr));
+
+        last_byte_ptr.* = 0xAA;
+        if (last_byte_ptr.* == 0xAA) {
+            common.printZ("Success! Dynamic mapping verified.\n");
+        } else {
+            common.printZ("Data verification failed!\n");
+        }
+
+        // We don't free here to keep the demo simple,
+        // but in a real system we would.
+    } else {
+        common.printZ("Allocation failed!\n");
+    }
+}

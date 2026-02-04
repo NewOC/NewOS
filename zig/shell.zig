@@ -79,6 +79,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "stack_overflow", .help = "Trigger a Double Fault via stack overflow", .handler = cmd_handler_stack_overflow },
     .{ .name = "page_fault", .help = "Trigger a Page Fault exception", .handler = cmd_handler_page_fault },
     .{ .name = "gpf", .help = "Trigger a General Protection Fault", .handler = cmd_handler_gpf },
+    .{ .name = "test_malloc", .help = "Test demand paging with large allocation", .handler = cmd_handler_test_malloc },
 } else [_]Command{});
 
 // Local command buffer
@@ -1197,6 +1198,10 @@ const crash_suite = struct {
 
     fn cmd_handler_gpf(_: []const u8) void {
         if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_gpf();
+    }
+
+    fn cmd_handler_test_malloc(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_test_malloc();
     }
 };
 

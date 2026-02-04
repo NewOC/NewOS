@@ -1,6 +1,7 @@
 const vga = @import("drivers/vga.zig");
 const serial = @import("drivers/serial.zig");
 const config = @import("config.zig");
+const memory = @import("memory.zig");
 
 pub const ExceptionFrame = extern struct {
     edi: u32,
@@ -164,7 +165,14 @@ pub fn crash_gpf() void {
     asm volatile ("mov %[val], %%ds" : : [val] "r" (@as(u32, 0x1234)));
 }
 
-export fn handle_exception(frame: *ExceptionFrame) noreturn {
+export fn handle_exception(frame: *ExceptionFrame) void {
+    if (frame.vector == 14) { // #PF
+        const cr2 = get_cr2();
+        // Support demand paging for valid RAM range, excluding the NULL page
+        if (cr2 >= 4096 and cr2 < 128 * 1024 * 1024) {
+            if (memory.map_page(cr2)) return;
+        }
+    }
     draw_rsod(frame, null, null);
 }
 
