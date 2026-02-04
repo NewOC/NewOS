@@ -46,6 +46,12 @@ export fn kmain() void {
     // 1. Initialize PMM, Paging & Heap
     memory.pmm.init();
     memory.init_paging();
+
+    // Ensure VGA is in a valid state after paging enabled
+    const vga = @import("drivers/vga.zig");
+    vga.reset_color();
+    vga.clear_screen();
+
     memory.heap.init();
     
     // 2. Initialize timer and interrupt controllers

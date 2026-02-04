@@ -35,6 +35,39 @@ const Command = struct {
     handler: *const fn ([]const u8) void,
 };
 
+const crash_suite = struct {
+    fn cmd_handler_abort(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_abort();
+    }
+
+    fn cmd_handler_invalid_op(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_invalid_op();
+    }
+
+    fn cmd_handler_stack_overflow(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_stack_overflow();
+    }
+
+    fn cmd_handler_page_fault(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_page_fault();
+    }
+
+    fn cmd_handler_gpf(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_gpf();
+    }
+
+    fn cmd_handler_test_malloc(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_test_malloc();
+    }
+};
+
+const cmd_handler_abort = crash_suite.cmd_handler_abort;
+const cmd_handler_invalid_op = crash_suite.cmd_handler_invalid_op;
+const cmd_handler_stack_overflow = crash_suite.cmd_handler_stack_overflow;
+const cmd_handler_page_fault = crash_suite.cmd_handler_page_fault;
+const cmd_handler_gpf = crash_suite.cmd_handler_gpf;
+const cmd_handler_test_malloc = crash_suite.cmd_handler_test_malloc;
+
 const SHELL_COMMANDS = [_]Command{
     .{ .name = "help", .help = "Show this help message (Tip: help 2)", .handler = cmd_handler_help },
     .{ .name = "clear", .help = "Clear screen and reset console state", .handler = cmd_handler_clear },
@@ -1179,37 +1212,6 @@ fn cmd_handler_panic(_: []const u8) void {
     if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_panic();
 }
 
-const crash_suite = struct {
-    fn cmd_handler_abort(_: []const u8) void {
-        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_abort();
-    }
-
-    fn cmd_handler_invalid_op(_: []const u8) void {
-        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_invalid_op();
-    }
-
-    fn cmd_handler_stack_overflow(_: []const u8) void {
-        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_stack_overflow();
-    }
-
-    fn cmd_handler_page_fault(_: []const u8) void {
-        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_page_fault();
-    }
-
-    fn cmd_handler_gpf(_: []const u8) void {
-        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_gpf();
-    }
-
-    fn cmd_handler_test_malloc(_: []const u8) void {
-        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_test_malloc();
-    }
-};
-
-const cmd_handler_abort = crash_suite.cmd_handler_abort;
-const cmd_handler_invalid_op = crash_suite.cmd_handler_invalid_op;
-const cmd_handler_stack_overflow = crash_suite.cmd_handler_stack_overflow;
-const cmd_handler_page_fault = crash_suite.cmd_handler_page_fault;
-const cmd_handler_gpf = crash_suite.cmd_handler_gpf;
 
 fn cmd_handler_docs(args: []const u8) void {
     shell_cmds.cmd_docs(args.ptr, @intCast(args.len));
