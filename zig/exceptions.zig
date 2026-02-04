@@ -225,7 +225,7 @@ fn draw_rsod(frame: ?*const ExceptionFrame, saved_tss: ?*const TSS, msg: ?[]cons
 
     // Clear screen with red
     for (0..2000) |i| {
-        vga.VIDEO_MEMORY[i] = (bg_red << 8) | ' ';
+        vga.VIDEO_MEMORY[i] = 0x4f20; // Hardcoded White on Red space
     }
 
     print_at(1, 2, "****************************************************************************", bg_red);
@@ -420,4 +420,5 @@ fn serial_print_hex(val: u32) void {
         const buf = [1]u8{char};
         serial.serial_print_str(&buf);
     }
+    serial.serial_print_str(" "); // Add space after hex for readability
 }

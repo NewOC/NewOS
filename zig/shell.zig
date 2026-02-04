@@ -59,6 +59,10 @@ const crash_suite = struct {
     fn cmd_handler_test_malloc(_: []const u8) void {
         if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_test_malloc();
     }
+
+    fn cmd_handler_test_null(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_test_null();
+    }
 };
 
 const cmd_handler_abort = crash_suite.cmd_handler_abort;
@@ -67,6 +71,7 @@ const cmd_handler_stack_overflow = crash_suite.cmd_handler_stack_overflow;
 const cmd_handler_page_fault = crash_suite.cmd_handler_page_fault;
 const cmd_handler_gpf = crash_suite.cmd_handler_gpf;
 const cmd_handler_test_malloc = crash_suite.cmd_handler_test_malloc;
+const cmd_handler_test_null = crash_suite.cmd_handler_test_null;
 
 const SHELL_COMMANDS = [_]Command{
     .{ .name = "help", .help = "Show this help message (Tip: help 2)", .handler = cmd_handler_help },
@@ -113,6 +118,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "page_fault", .help = "Trigger a Page Fault exception", .handler = cmd_handler_page_fault },
     .{ .name = "gpf", .help = "Trigger a General Protection Fault", .handler = cmd_handler_gpf },
     .{ .name = "test_malloc", .help = "Test demand paging with large allocation", .handler = cmd_handler_test_malloc },
+    .{ .name = "test_null", .help = "Test NULL pointer protection", .handler = cmd_handler_test_null },
 } else [_]Command{});
 
 // Local command buffer

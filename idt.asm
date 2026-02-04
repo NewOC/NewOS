@@ -133,9 +133,9 @@ common_exception_handler:
     cld
     
     push esp                ; Pass pointer to ExceptionFrame
-    call handle_exception   ; Should not return
+    call handle_exception   ; Can return for #PF demand paging
     
-    pop esp
+    add esp, 4              ; Clean up argument
     popad
     add esp, 8              ; Clean up vector and error code
     iret

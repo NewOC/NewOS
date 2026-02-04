@@ -23,9 +23,9 @@ var page_directory: PageDirectory align(4096) = [_]u32{0} ** 1024;
 var page_tables: [32]PageTable align(4096) = [_]PageTable{[_]u32{0} ** 1024} ** 32;
 
 pub fn init_paging() void {
-    // 1. Prepare Page Tables (Identity Map first 16MB)
-    // We map only 4 tables initially as requested.
-    for (0..4) |t| {
+    // 1. Prepare Page Tables (Identity Map first 32MB)
+    // We map 8 tables initially to be safe (covers kernel, stacks, ACPI, BDA).
+    for (0..8) |t| {
         for (0..1024) |i| {
             const addr = (t * 1024 + i) * PAGE_SIZE;
 

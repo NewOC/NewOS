@@ -49,7 +49,7 @@ export fn kmain() void {
 
     // Ensure VGA is in a valid state after paging enabled
     const vga = @import("drivers/vga.zig");
-    vga.reset_color();
+    vga.current_color = 0x0F00; // Explicitly set White on Black
     vga.clear_screen();
 
     memory.heap.init();
