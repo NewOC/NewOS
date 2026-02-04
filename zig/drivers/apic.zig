@@ -84,6 +84,7 @@ pub fn boot_aps(ap_main: *const fn() callconv(.c) void) void {
         // Wait for AP to signal it has booted and read its parameters
         var timeout: u32 = 1000;
         while (@atomicLoad(u32, &ap_boot_handshake, .seq_cst) == 0 and timeout > 0) {
+            asm volatile ("pause");
             common.sleep(1);
             timeout -= 1;
         }
@@ -94,6 +95,13 @@ pub fn init_lapic() void {
     // 1. Set Spurious Interrupt Vector (and enable LAPIC)
     // Vector 0xFF, Enable bit 8
     lapic_write(LAPIC_SVR, lapic_read(LAPIC_SVR) | 0x1FF);
+
+    // 2. Mask LVT entries to prevent unwanted interrupts on APs
+    lapic_write(LAPIC_LVT_TMR, 0x10000);   // Masked
+    lapic_write(LAPIC_LVT_PERF, 0x10000);  // Masked
+    lapic_write(LAPIC_LVT_LINT0, 0x10000); // Masked
+    lapic_write(LAPIC_LVT_LINT1, 0x10000); // Masked
+    lapic_write(LAPIC_LVT_ERR, 0x10000);   // Masked
 }
 
 // I/O APIC
@@ -135,8 +143,4 @@ pub fn init() void {
     // Route Timer (IRQ 0) to Master (Core 0)
     // IRQ 0 -> Vector 0x20
     set_irq_redirect(0, 0x20, acpi.cpu_ids[0]);
-
-    // ATA IRQs (14, 15) - Not yet supported by driver ISRs
-    // set_irq_redirect(14, 0x2E, acpi.cpu_ids[0]);
-    // set_irq_redirect(15, 0x2F, acpi.cpu_ids[0]);
 }

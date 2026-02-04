@@ -138,15 +138,16 @@ export fn kmain() void {
     
     // Initialize ACPI (for proper shutdown)
     if (acpi.init()) {
-        // Initialize APIC
+        // Initialize APIC and route interrupts to Master core
         apic.init();
 
         // Enable interrupts on Master Core so we can use timer for sleeping during AP boot
         asm volatile ("sti");
 
-        // Boot APs
+        // Boot Application Processors
         apic.boot_aps(ap_main);
     } else {
+        // Fallback for systems without ACPI/APIC: just enable interrupts on BSP
         asm volatile ("sti");
     }
 

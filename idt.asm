@@ -14,7 +14,6 @@ extern isr_keyboard
 extern isr_timer
 extern lapic_eoi
 
-
 section .data
 align 16
 ; Space for 256 gates (8 bytes each)
@@ -22,7 +21,6 @@ idt_start:
     times 256 * 8 db 0
 idt_end:
 
-section .data
 align 4
 ; IDT Pointer for LIDT instruction
 global kernel_idt_descriptor
@@ -31,6 +29,7 @@ kernel_idt_descriptor:
     dd idt_start
 
 section .text
+align 4
 
 load_idt:
     lidt [kernel_idt_descriptor]

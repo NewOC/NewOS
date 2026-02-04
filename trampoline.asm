@@ -59,6 +59,7 @@ gdt_descriptor_ap:
     dd gdt_ap - trampoline_start + 0x8000
 
 ; These will be filled by the Master core before sending SIPI
+; They MUST be within trampoline_start and trampoline_end
 align 4
 ap_stack_ptr dd 0
 ap_main_ptr  dd 0
