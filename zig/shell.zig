@@ -72,7 +72,14 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "mkfs", .help = "Create filesystem on current drive", .handler = cmd_handler_mkfs },
     .{ .name = "install", .help = "install <src> [name] - Install Nova script", .handler = cmd_handler_install },
     .{ .name = "uninstall", .help = "uninstall <name> - Remove installed command", .handler = cmd_handler_uninstall },
-};
+} ++ (if (config.ENABLE_DEBUG_CRASH_COMMANDS) [_]Command{
+    .{ .name = "panic", .help = "Trigger a CPU exception for testing", .handler = cmd_handler_panic },
+    .{ .name = "abort", .help = "Trigger a manual kernel panic", .handler = cmd_handler_abort },
+    .{ .name = "invalid_op", .help = "Trigger an Invalid Opcode exception", .handler = cmd_handler_invalid_op },
+    .{ .name = "stack_overflow", .help = "Trigger a Double Fault via stack overflow", .handler = cmd_handler_stack_overflow },
+    .{ .name = "page_fault", .help = "Trigger a Page Fault exception", .handler = cmd_handler_page_fault },
+    .{ .name = "gpf", .help = "Trigger a General Protection Fault", .handler = cmd_handler_gpf },
+} else [_]Command{});
 
 // Local command buffer
 var cmd_buffer: [1024]u8 = [_]u8{0} ** 1024;
@@ -1166,6 +1173,38 @@ fn cmd_handler_time(_: []const u8) void {
 fn cmd_handler_sysinfo(_: []const u8) void {
     shell_cmds.cmd_sysinfo();
 }
+
+fn cmd_handler_panic(_: []const u8) void {
+    if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_panic();
+}
+
+const crash_suite = struct {
+    fn cmd_handler_abort(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_abort();
+    }
+
+    fn cmd_handler_invalid_op(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_invalid_op();
+    }
+
+    fn cmd_handler_stack_overflow(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_stack_overflow();
+    }
+
+    fn cmd_handler_page_fault(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_page_fault();
+    }
+
+    fn cmd_handler_gpf(_: []const u8) void {
+        if (config.ENABLE_DEBUG_CRASH_COMMANDS) shell_cmds.cmd_gpf();
+    }
+};
+
+const cmd_handler_abort = crash_suite.cmd_handler_abort;
+const cmd_handler_invalid_op = crash_suite.cmd_handler_invalid_op;
+const cmd_handler_stack_overflow = crash_suite.cmd_handler_stack_overflow;
+const cmd_handler_page_fault = crash_suite.cmd_handler_page_fault;
+const cmd_handler_gpf = crash_suite.cmd_handler_gpf;
 
 fn cmd_handler_docs(args: []const u8) void {
     shell_cmds.cmd_docs(args.ptr, @intCast(args.len));

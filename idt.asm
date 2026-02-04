@@ -7,11 +7,13 @@ global idt_init
 global enable_interrupts
 global disable_interrupts
 global test_divide_by_zero
+global double_fault_handler_task
 
 ; External Zig ISR handlers
 extern isr_keyboard
 extern isr_timer
-
+extern handle_exception
+extern handle_double_fault
 
 section .data
 align 16
@@ -31,19 +33,22 @@ idt_descriptor:
 idt_init:
     pusha
     
-    ; 1. Set default exception handler for all 256 gates
-    mov ebx, 0
-.loop_idt:
-    mov eax, exception_handler_wrapper
-    call idt_set_gate
-    inc ebx
-    cmp ebx, 256
-    jl .loop_idt
+    ; 1. Set exception handlers (0-31)
+    %assign i 0
+    %rep 32
+        %if i != 8
+            mov eax, exception_handler_%+i
+            mov ebx, i
+            call idt_set_gate
+        %endif
+        %assign i i+1
+    %endrep
 
-    ; 2. Set special handler for Division by Zero (INT 0)
-    mov eax, division_by_zero_handler
-    mov ebx, 0
-    call idt_set_gate
+    ; 2. Set Task Gate for Double Fault (Vector 8)
+    ; Selector 0x20 is DF TSS (defined in kernel32.asm GDT)
+    mov eax, 0x20
+    mov ebx, 8
+    call idt_set_task_gate
 
     ; 3. Remap the PIC (offset IRQs to 0x20+)
     call remap_pic
@@ -63,18 +68,17 @@ idt_init:
     mov ebx, 0x21
     call idt_set_gate
     
-    ; 6. Load IDT into CPU
+    ; 7. Load IDT into CPU
     lidt [idt_descriptor]
 
     ; Flush keyboard buffer
     in al, 0x60
     
-    ; 7. Unmask IRQ0 (Timer) and IRQ1 (Keyboard)
+    ; 8. Unmask IRQ0 (Timer) and IRQ1 (Keyboard)
     in al, 0x21
     and al, 0xfc        ; 11111100b - Unmask IRQ0 and IRQ1
     out 0x21, al
 
-    
     popa
     ret
 
@@ -97,8 +101,26 @@ idt_set_gate:
     pop edi
     ret
 
-; ISR Wrapper: Keyboard (IRQ1)
-isr_keyboard_wrapper:
+; Helper: Set a Task Gate
+; EAX: TSS selector, EBX: gate index
+idt_set_task_gate:
+    push edi
+
+    mov edi, idt_start
+    shl ebx, 3
+    add edi, ebx
+
+    mov word [edi], 0       ; Offset ignored
+    mov word [edi + 2], ax  ; TSS Selector
+    mov byte [edi + 4], 0   ; Reserved
+    mov byte [edi + 5], 0x85 ; Task Gate (Present, DPL 0, Type 5)
+    mov word [edi + 6], 0   ; Offset ignored
+
+    pop edi
+    ret
+
+; Common exception handler
+common_exception_handler:
     pushad
     
     ; Ensure segment registers are set to kernel data
@@ -108,114 +130,145 @@ isr_keyboard_wrapper:
     mov fs, ax
     mov gs, ax
     
-    cld                 ; Clear direction flag for Zig
+    cld
     
-    call isr_keyboard   ; Call actual logic in keyboard_isr.zig
+    push esp                ; Pass pointer to ExceptionFrame
+    call handle_exception   ; Should not return
     
-    ; Send End Of Interrupt (EOI) to Master PIC
+    pop esp
+    popad
+    add esp, 8              ; Clean up vector and error code
+    iret
+
+; Task-based Double Fault Handler
+; This is the EIP for the DF TSS
+double_fault_handler_task:
+    ; No need to pushad, we are in a fresh task
+    ; But we want to call Zig's handle_double_fault
+    call handle_double_fault
+    hlt
+    jmp $
+
+; Macros for exception wrappers
+%macro EXCEPTION_NOERR 1
+exception_handler_%1:
+    push dword 0            ; Dummy error code
+    push dword %1           ; Vector number
+    jmp common_exception_handler
+%endmacro
+
+%macro EXCEPTION_ERR 1
+exception_handler_%1:
+    push dword %1           ; Vector number
+    jmp common_exception_handler
+%endmacro
+
+; Generate wrappers
+EXCEPTION_NOERR 0
+EXCEPTION_NOERR 1
+EXCEPTION_NOERR 2
+EXCEPTION_NOERR 3
+EXCEPTION_NOERR 4
+EXCEPTION_NOERR 5
+EXCEPTION_NOERR 6
+EXCEPTION_NOERR 7
+; Vector 8 is handled by Task Gate
+EXCEPTION_NOERR 9
+EXCEPTION_ERR 10
+EXCEPTION_ERR 11
+EXCEPTION_ERR 12
+EXCEPTION_ERR 13
+EXCEPTION_ERR 14
+EXCEPTION_NOERR 15
+EXCEPTION_NOERR 16
+EXCEPTION_ERR 17
+EXCEPTION_NOERR 18
+EXCEPTION_NOERR 19
+EXCEPTION_NOERR 20
+EXCEPTION_NOERR 21
+EXCEPTION_NOERR 22
+EXCEPTION_NOERR 23
+EXCEPTION_NOERR 24
+EXCEPTION_NOERR 25
+EXCEPTION_NOERR 26
+EXCEPTION_NOERR 27
+EXCEPTION_NOERR 28
+EXCEPTION_NOERR 29
+EXCEPTION_NOERR 30
+EXCEPTION_NOERR 31
+
+; --- IRQ Wrappers ---
+
+; ISR Wrapper: Keyboard (IRQ1)
+isr_keyboard_wrapper:
+    pushad
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    cld
+    call isr_keyboard
     mov al, 0x20
     out 0x20, al
-    
     popad
     iret
 
 ; ISR Wrapper: Timer (IRQ0)
 isr_timer_wrapper:
     pushad
-    
-    ; Ensure segment registers are set to kernel data
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
-    
-    cld                 ; Clear direction flag for Zig
-    
-    call isr_timer      ; Call actual logic in timer.zig
-    
-    ; Send End Of Interrupt (EOI) to Master PIC
+    cld
+    call isr_timer
     mov al, 0x20
     out 0x20, al
-    
     popad
     iret
-
-
-extern kernel_panic
-
-section .data
-msg_div_zero db "Division By Zero Exception!", 0
-msg_div_zero_len equ $ - msg_div_zero
-
-msg_general_ex db "Unhandled CPU Exception!", 0
-msg_general_ex_len equ $ - msg_general_ex
-
-section .text
-; General Exception Handler - Calls Kernel Panic
-exception_handler_wrapper:
-    cli
-    push dword msg_general_ex_len
-    push dword msg_general_ex
-    call kernel_panic
-    hlt
-    jmp $
-
-; Division by Zero Handler - Calls Kernel Panic
-division_by_zero_handler:
-    cli
-    push dword msg_div_zero_len
-    push dword msg_div_zero
-    call kernel_panic
-    hlt
-    jmp $
 
 ; Test function to trigger division by zero exception
 test_divide_by_zero:
     push ebp
     mov ebp, esp
-    
-    ; Trigger division by zero
     xor edx, edx
     xor eax, eax
     mov ecx, 0
-    div ecx                     ; This will trigger INT 0
-    
-    ; Should never reach here
+    div ecx
     mov esp, ebp
     pop ebp
     ret
 
 ; Remap the Programmable Interrupt Controller
-; This prevents hardware IRQs from conflicting with CPU exceptions (0..31)
 remap_pic:
     push eax
     mov al, 0x11
-    out 0x20, al        ; ICW1 Master
+    out 0x20, al
     call io_wait
-    out 0xA0, al        ; ICW1 Slave
+    out 0xA0, al
     call io_wait
     mov al, 0x20
-    out 0x21, al        ; ICW2 Master Offset 0x20
+    out 0x21, al
     call io_wait
     mov al, 0x28
-    out 0xA1, al        ; ICW2 Slave Offset 0x28
+    out 0xA1, al
     call io_wait
     mov al, 0x04
-    out 0x21, al        ; ICW3 Master (Slave at IRQ2)
+    out 0x21, al
     call io_wait
     mov al, 0x02
-    out 0xA1, al        ; ICW3 Slave (Identity)
+    out 0xA1, al
     call io_wait
     mov al, 0x01
-    out 0x21, al        ; ICW4 8086 mode
+    out 0x21, al
     call io_wait
     out 0xA1, al
     call io_wait
     pop eax
     ret
 
-; IO Delay
 io_wait:
     out 0x80, al
     ret

@@ -16,6 +16,8 @@ const rtc = @import("drivers/rtc.zig");
 const sysinfo = @import("commands/sysinfo.zig");
 const file_utils = @import("commands/file_utils.zig");
 const docs = @import("commands/docs.zig");
+const config = @import("config.zig");
+const exceptions = @import("exceptions.zig");
 
 extern fn shell_clear_history() void;
 
@@ -604,4 +606,41 @@ pub export fn cmd_edit(name_ptr: [*]const u8, name_len: u32) void {
 
 pub export fn cmd_sysinfo() void {
     sysinfo.execute();
+}
+
+extern fn test_divide_by_zero() void;
+
+comptime {
+    if (config.ENABLE_DEBUG_CRASH_COMMANDS) {
+        @export(&cmd_panic, .{ .name = "cmd_panic" });
+        @export(&cmd_abort, .{ .name = "cmd_abort" });
+        @export(&cmd_invalid_op, .{ .name = "cmd_invalid_op" });
+        @export(&cmd_stack_overflow, .{ .name = "cmd_stack_overflow" });
+        @export(&cmd_page_fault, .{ .name = "cmd_page_fault" });
+        @export(&cmd_gpf, .{ .name = "cmd_gpf" });
+    }
+}
+
+pub fn cmd_panic() callconv(.c) void {
+    test_divide_by_zero();
+}
+
+pub fn cmd_abort() callconv(.c) void {
+    exceptions.crash_abort();
+}
+
+pub fn cmd_invalid_op() callconv(.c) void {
+    exceptions.crash_invalid_op();
+}
+
+pub fn cmd_stack_overflow() callconv(.c) void {
+    exceptions.crash_stack_overflow();
+}
+
+pub fn cmd_page_fault() callconv(.c) void {
+    exceptions.crash_page_fault();
+}
+
+pub fn cmd_gpf() callconv(.c) void {
+    exceptions.crash_gpf();
 }
