@@ -95,12 +95,12 @@ fn inb(port: u16) u8 {
     );
 }
 
-extern const kernel_idt_descriptor: anyopaque;
+extern fn load_idt() void;
 
 /// AP Entry Point (Application Processors)
 export fn ap_main() callconv(.c) void {
     // Load IDT for this core
-    asm volatile ("lidt (%[ptr])" : : [ptr] "r" (&kernel_idt_descriptor));
+    load_idt();
 
     apic.init_lapic();
 
@@ -138,13 +138,17 @@ export fn kmain() void {
     
     // Initialize ACPI (for proper shutdown)
     if (acpi.init()) {
-        // Initialize APIC and Boot APs
+        // Initialize APIC
         apic.init();
-        apic.boot_aps(ap_main);
-    }
 
-    // Enable interrupts on Master Core
-    asm volatile ("sti");
+        // Enable interrupts on Master Core so we can use timer for sleeping during AP boot
+        asm volatile ("sti");
+
+        // Boot APs
+        apic.boot_aps(ap_main);
+    } else {
+        asm volatile ("sti");
+    }
 
     // Main Shell loop
     while (true) {

@@ -4,6 +4,7 @@
 [bits 32]
 
 global idt_init
+global load_idt
 global enable_interrupts
 global disable_interrupts
 global test_divide_by_zero
@@ -30,6 +31,10 @@ kernel_idt_descriptor:
     dd idt_start
 
 section .text
+
+load_idt:
+    lidt [kernel_idt_descriptor]
+    ret
 
 ; Initialize the IDT and configure PIC
 idt_init:
