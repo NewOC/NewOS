@@ -1152,8 +1152,39 @@ fn cmd_handler_echo(args: []const u8) void {
     shell_cmds.cmd_echo(args.ptr, @intCast(args.len));
 }
 
-fn cmd_handler_mem(_: []const u8) void {
+fn cmd_handler_mem(args: []const u8) void {
     const memory_mod = @import("memory.zig");
+    const arg = common.trim(args);
+
+    if (common.std_mem_eql(arg, "poison")) {
+        common.printZ("Accessing poison address 0xDEADC0DE...\n");
+        const p: *volatile u32 = @ptrFromInt(0xDEADC0DE);
+        _ = p.*;
+        return;
+    }
+
+    if (common.std_mem_eql(arg, "test")) {
+        common.printZ("Testing 20MB Demand Paging at 0x2000000 (32MB)...\n");
+        const start_addr: usize = 0x2000000;
+        const size: usize = 20 * 1024 * 1024;
+        var i: usize = 0;
+        var success = true;
+        while (i < size) : (i += memory_mod.PAGE_SIZE) {
+            const p: *volatile u32 = @ptrFromInt(start_addr + i);
+            p.* = @as(u32, @intCast(i));
+            if (p.* != i) {
+                success = false;
+                break;
+            }
+        }
+        if (success) {
+            common.printZ("20MB Demand Paging Test: SUCCESS\n");
+        } else {
+            common.printZ("20MB Demand Paging Test: FAILED\n");
+        }
+        return;
+    }
+
     common.printZ("Allocator Status:\n");
     const ptr = memory_mod.heap.alloc(64);
     if (ptr) |p| {
@@ -1161,9 +1192,10 @@ fn cmd_handler_mem(_: []const u8) void {
         common.printNum(@intCast(@intFromPtr(p)));
         common.printZ("\n");
         memory_mod.heap.free(p);
-        memory_mod.heap.garbage_collect();
         common.printZ("Memory test stable.\n");
     } else { common.printZ("Allocation failed!\n"); }
+
+    common.printZ("Use 'mem test' for demand paging test or 'mem poison' for RSOD test.\n");
 }
 
 fn cmd_handler_time(_: []const u8) void {

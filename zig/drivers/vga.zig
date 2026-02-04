@@ -11,6 +11,11 @@ pub var current_color: u16 = DEFAULT_ATTR;
 pub export var cursor_row: u8 = 0;
 pub export var cursor_col: u8 = 0;
 
+pub fn vga_init() void {
+    current_color = DEFAULT_ATTR;
+    clear_screen();
+}
+
 var screen_buffer: [MAX_COLS * MAX_ROWS]u16 = [_]u16{0} ** (MAX_COLS * MAX_ROWS);
 var saved_cursor_row: u8 = 0;
 var saved_cursor_col: u8 = 0;

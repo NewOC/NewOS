@@ -43,9 +43,12 @@ pub fn panic(msg: []const u8) noreturn {
 
 // --- Kernel Entry Point ---
 export fn kmain() void {
-    // 1. Initialize PMM & Heap
+    @import("drivers/vga.zig").vga_init();
+
+    // 1. Initialize PMM, Heap & Paging
     memory.pmm.init();
     memory.heap.init();
+    memory.init_paging();
     
     // 2. Initialize timer and interrupt controllers
     // Initialize file system

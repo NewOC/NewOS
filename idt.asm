@@ -122,6 +122,10 @@ idt_set_task_gate:
 ; Common exception handler
 common_exception_handler:
     pushad
+    push ds
+    push es
+    push fs
+    push gs
     
     ; Ensure segment registers are set to kernel data
     mov ax, 0x10
@@ -133,9 +137,13 @@ common_exception_handler:
     cld
     
     push esp                ; Pass pointer to ExceptionFrame
-    call handle_exception   ; Should not return
+    call handle_exception
     
-    pop esp
+    add esp, 4              ; Remove pushed ESP
+    pop gs
+    pop fs
+    pop es
+    pop ds
     popad
     add esp, 8              ; Clean up vector and error code
     iret
@@ -143,8 +151,8 @@ common_exception_handler:
 ; Task-based Double Fault Handler
 ; This is the EIP for the DF TSS
 double_fault_handler_task:
-    ; No need to pushad, we are in a fresh task
-    ; But we want to call Zig's handle_double_fault
+    ; The CPU pushes an error code onto the new stack for #DF
+    add esp, 4              ; Pop error code (we read state from TSS)
     call handle_double_fault
     hlt
     jmp $
