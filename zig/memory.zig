@@ -38,16 +38,17 @@ pub fn init_paging() void {
 
     // 3. Enable Paging
     const pd_addr = @intFromPtr(&page_directory);
+    var tmp: u32 = undefined;
     asm volatile (
         \\mov %[pd], %%cr3
-        \\mov %%cr0, %%eax
-        \\or $0x80000000, %%eax
-        \\mov %%eax, %%cr0
+        \\mov %%cr0, %[tmp]
+        \\or $0x80000000, %[tmp]
+        \\mov %[tmp], %%cr0
         \\jmp 1f
         \\1:
-        :
+        : [tmp] "=&r" (tmp)
         : [pd] "r" (pd_addr)
-        : "eax", "memory"
+        : "memory"
     );
 }
 
