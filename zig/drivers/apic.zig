@@ -40,7 +40,7 @@ extern const trampoline_end: anyopaque;
 extern var ap_stack_ptr: u32;
 extern var ap_main_ptr: u32;
 
-pub var ap_boot_handshake: volatile u32 = 0;
+pub var ap_boot_handshake: u32 = 0;
 
 pub fn boot_aps(ap_main: *const fn() callconv(.c) void) void {
     const trampoline_addr: usize = 0x8000;
