@@ -13,6 +13,7 @@ nasm -f bin bootloader.asm -o build/bootloader.bin
 # Assemble kernel to ELF object file
 echo "Assembling kernel..."
 nasm -f elf32 kernel32.asm -o build/kernel32.o
+nasm -f elf32 trampoline.asm -o build/trampoline.o
 
 # Build Zig modules
 echo "Building Zig modules..."
@@ -22,7 +23,7 @@ cd ..
 
 # Link kernel with Zig modules
 echo "Linking..."
-zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build/kernel32.elf build/kernel32.o zig/build/kernel.o
+zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build/kernel32.elf build/kernel32.o build/trampoline.o zig/build/kernel.o
 
 # Extract flat binary from ELF
 echo "Extracting binary..."

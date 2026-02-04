@@ -2,6 +2,9 @@
 // Provides basic read/write access to ATA hard disks.
 
 const common = @import("../commands/common.zig");
+const sync = @import("../sync.zig");
+
+var ata_lock = sync.Spinlock{};
 
 pub const Drive = enum(u1) {
     Master = 0,
@@ -21,6 +24,8 @@ fn wait_drq() void {
 }
 
 pub fn identify(drive: Drive) u32 {
+    ata_lock.acquire();
+    defer ata_lock.release();
     common.outb(ATA_PRIMARY_BASE + 6, if (drive == .Master) @as(u8, 0xA0) else @as(u8, 0xB0));
     common.outb(ATA_PRIMARY_BASE + 2, 0);
     common.outb(ATA_PRIMARY_BASE + 3, 0);
@@ -55,6 +60,8 @@ pub fn identify(drive: Drive) u32 {
 }
 
 pub fn read_sector(drive: Drive, lba: u32, buffer: [*]u8) void {
+    ata_lock.acquire();
+    defer ata_lock.release();
     wait_bsy();
     common.outb(ATA_PRIMARY_BASE + 6, 0xE0 | (@as(u8, @intFromEnum(drive)) << 4) | @as(u8, @intCast((lba >> 24) & 0x0F)));
     common.outb(ATA_PRIMARY_BASE + 2, 1); // 1 sector
@@ -75,6 +82,8 @@ pub fn read_sector(drive: Drive, lba: u32, buffer: [*]u8) void {
 }
 
 pub fn write_sector(drive: Drive, lba: u32, data: [*]const u8) void {
+    ata_lock.acquire();
+    defer ata_lock.release();
     wait_bsy();
     common.outb(ATA_PRIMARY_BASE + 6, 0xE0 | (@as(u8, @intFromEnum(drive)) << 4) | @as(u8, @intCast((lba >> 24) & 0x0F)));
     common.outb(ATA_PRIMARY_BASE + 2, 1); // 1 sector

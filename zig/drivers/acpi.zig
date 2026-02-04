@@ -11,6 +11,11 @@ var slp_typa: u16 = 0;
 var slp_typb: u16 = 0;
 var slp_en: u16 = 0x2000;
 
+pub var lapic_addr: usize = 0xFEE00000;
+pub var ioapic_addr: usize = 0xFEC00000;
+pub var cpu_count: u32 = 0;
+pub var cpu_ids: [16]u8 = [_]u8{0} ** 16;
+
 fn find_rsdp() ?usize {
     const signature = "RSD PTR ";
     var addr: usize = 0x80000;
@@ -40,8 +45,13 @@ pub fn init() bool {
     const num_entries = (rsdt_length - 36) / 4;
     
     var i: u32 = 0;
+    var found_facp = false;
     while (i < num_entries) : (i += 1) {
         const table_addr = read_u32(rsdt_addr + 36 + (i * 4));
+        if (check_signature_at(table_addr, "APIC")) {
+            parse_madt(table_addr);
+        }
+
         if (check_signature_at(table_addr, "FACP")) {
             // 1. Get Power Ports
             smi_command_port = read_u32(table_addr + 48);
@@ -64,11 +74,37 @@ pub fn init() bool {
                 slp_typa = 5 << 10;
                 slp_typb = 5 << 10;
             }
-            
-            return true;
+            found_facp = true;
         }
     }
-    return false;
+    return found_facp;
+}
+
+fn parse_madt(madt_addr: usize) void {
+    lapic_addr = read_u32(madt_addr + 36);
+    const length = read_u32(madt_addr + 4);
+    var ptr = madt_addr + 44;
+    const end = madt_addr + length;
+
+    while (ptr < end) {
+        const entry_type = read_u8(ptr);
+        const entry_len = read_u8(ptr + 1);
+
+        if (entry_type == 0) { // Processor Local APIC
+            const cpu_id = read_u8(ptr + 3);
+            const flags = read_u32(ptr + 4);
+            if ((flags & 1) != 0) { // Enabled
+                if (cpu_count < 16) {
+                    cpu_ids[cpu_count] = cpu_id;
+                    cpu_count += 1;
+                }
+            }
+        } else if (entry_type == 1) { // I/O APIC
+            ioapic_addr = read_u32(ptr + 4);
+        }
+
+        ptr += entry_len;
+    }
 }
 
 /// Simple AML parser to find \_S5_ (Shutdown) package

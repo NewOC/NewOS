@@ -11,6 +11,7 @@ global test_divide_by_zero
 ; External Zig ISR handlers
 extern isr_keyboard
 extern isr_timer
+extern lapic_eoi
 
 
 section .data
@@ -20,12 +21,15 @@ idt_start:
     times 256 * 8 db 0
 idt_end:
 
-section .text
+section .data
 align 4
 ; IDT Pointer for LIDT instruction
-idt_descriptor:
+global kernel_idt_descriptor
+kernel_idt_descriptor:
     dw idt_end - idt_start - 1
     dd idt_start
+
+section .text
 
 ; Initialize the IDT and configure PIC
 idt_init:
@@ -64,7 +68,7 @@ idt_init:
     call idt_set_gate
     
     ; 6. Load IDT into CPU
-    lidt [idt_descriptor]
+    lidt [kernel_idt_descriptor]
 
     ; Flush keyboard buffer
     in al, 0x60
@@ -112,9 +116,8 @@ isr_keyboard_wrapper:
     
     call isr_keyboard   ; Call actual logic in keyboard_isr.zig
     
-    ; Send End Of Interrupt (EOI) to Master PIC
-    mov al, 0x20
-    out 0x20, al
+    ; Send End Of Interrupt (EOI) to APIC
+    call lapic_eoi
     
     popad
     iret
@@ -134,9 +137,8 @@ isr_timer_wrapper:
     
     call isr_timer      ; Call actual logic in timer.zig
     
-    ; Send End Of Interrupt (EOI) to Master PIC
-    mov al, 0x20
-    out 0x20, al
+    ; Send End Of Interrupt (EOI) to APIC
+    call lapic_eoi
     
     popad
     iret

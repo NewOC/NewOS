@@ -1,9 +1,17 @@
 // Serial COM1 Driver
 const common = @import("../commands/common.zig");
+const sync = @import("../sync.zig");
 
 pub const PORT = 0x3F8;
+var serial_lock = sync.Spinlock{};
 
 pub export fn serial_print_char(c: u8) void {
+    serial_lock.acquire();
+    defer serial_lock.release();
+    serial_print_char_unlocked(c);
+}
+
+fn serial_print_char_unlocked(c: u8) void {
     while (!is_transmit_empty()) {}
     // Map LF to CRLF for serial terminal consistency
     if (c == 10) {
@@ -14,7 +22,9 @@ pub export fn serial_print_char(c: u8) void {
 }
 
 pub fn serial_print_str(str: []const u8) void {
-    for (str) |c| serial_print_char(c);
+    serial_lock.acquire();
+    defer serial_lock.release();
+    for (str) |c| serial_print_char_unlocked(c);
 }
 
 fn is_transmit_empty() bool {
@@ -48,7 +58,10 @@ pub fn serial_show_cursor() void {
 pub fn serial_set_cursor(row: u8, col: u8) void {
     var buf: [32]u8 = undefined;
     const str = common.fmt_to_buf(&buf, "\x1B[{d};{d}H", .{ @as(u32, row) + 1, @as(u32, col) + 1 });
-    serial_print_str(str);
+
+    serial_lock.acquire();
+    defer serial_lock.release();
+    for (str) |c| serial_print_char_unlocked(c);
 }
 
 pub fn serial_set_color(fg: u8) void {
@@ -66,7 +79,10 @@ pub fn serial_set_color(fg: u8) void {
         else => 37,
     };
     const str = common.fmt_to_buf(&buf, "\x1B[{d}m", .{ansi_color});
-    serial_print_str(str);
+
+    serial_lock.acquire();
+    defer serial_lock.release();
+    for (str) |c| serial_print_char_unlocked(c);
 }
 
 fn outb(port: u16, val: u8) void {

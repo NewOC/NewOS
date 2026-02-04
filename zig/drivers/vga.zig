@@ -1,5 +1,8 @@
 // VGA Text Mode Driver - Safe Version
 const common = @import("../commands/common.zig");
+const sync = @import("../sync.zig");
+
+var vga_lock = sync.Spinlock{};
 
 pub const VIDEO_MEMORY: [*]volatile u16 = @ptrFromInt(0xb8000);
 pub const MAX_COLS: usize = 80;
@@ -16,14 +19,20 @@ var saved_cursor_row: u8 = 0;
 var saved_cursor_col: u8 = 0;
 
 pub export fn set_color(fg: u8, bg: u8) void {
+    vga_lock.acquire();
+    defer vga_lock.release();
     current_color = (@as(u16, bg) << 12) | (@as(u16, fg) << 8);
 }
 
 pub export fn reset_color() void {
+    vga_lock.acquire();
+    defer vga_lock.release();
     current_color = DEFAULT_ATTR;
 }
 
 pub export fn save_screen_buffer() void {
+    vga_lock.acquire();
+    defer vga_lock.release();
     var i: usize = 0;
     while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
         screen_buffer[i] = VIDEO_MEMORY[i];
@@ -33,29 +42,35 @@ pub export fn save_screen_buffer() void {
 }
 
 pub export fn restore_screen_buffer() void {
+    vga_lock.acquire();
+    defer vga_lock.release();
     var i: usize = 0;
     while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
         VIDEO_MEMORY[i] = screen_buffer[i];
     }
     cursor_row = saved_cursor_row;
     cursor_col = saved_cursor_col;
-    update_hardware_cursor();
+    update_hardware_cursor_locked();
 }
 
 pub export fn clear_screen() void {
+    vga_lock.acquire();
+    defer vga_lock.release();
     var i: usize = 0;
     while (i < MAX_COLS * MAX_ROWS) : (i += 1) {
         VIDEO_MEMORY[i] =  DEFAULT_ATTR | ' ';
     }
     cursor_row = 0;
     cursor_col = 0;
-    update_hardware_cursor();
+    update_hardware_cursor_locked();
 }
 
 pub export fn zig_set_cursor(row: u8, col: u8) void {
+    vga_lock.acquire();
+    defer vga_lock.release();
     cursor_row = row;
     cursor_col = col;
-    update_hardware_cursor();
+    update_hardware_cursor_locked();
 }
 
 pub export fn zig_get_cursor_row() u8 { return cursor_row; }
@@ -82,6 +97,9 @@ fn internal_newline() void {
 }
 
 pub export fn zig_print_char(c: u8) void {
+    vga_lock.acquire();
+    defer vga_lock.release();
+
     if (c == '\n' or c == 10) {
         internal_newline();
     } else if (c == '\r' or c == 13) {
@@ -110,10 +128,13 @@ pub export fn zig_print_char(c: u8) void {
         }
     }
     
-    update_vga_cursor();
+    update_vga_cursor_locked();
 }
 
 pub export fn zig_clear_line(row: u8) void {
+    vga_lock.acquire();
+    defer vga_lock.release();
+
     if (row >= MAX_ROWS) return;
     const offset = @as(usize, row) * MAX_COLS;
     var i: usize = 0;
@@ -122,7 +143,7 @@ pub export fn zig_clear_line(row: u8) void {
     }
 }
 
-pub fn update_vga_cursor() void {
+fn update_vga_cursor_locked() void {
     const pos = @as(u16, cursor_row) * 80 + cursor_col;
     outb(0x3D4, 0x0F);
     outb(0x3D5, @intCast(pos & 0xFF));
@@ -130,12 +151,18 @@ pub fn update_vga_cursor() void {
     outb(0x3D5, @intCast((pos >> 8) & 0xFF));
 }
 
-pub export fn update_hardware_cursor() void {
-    update_vga_cursor();
+fn update_hardware_cursor_locked() void {
+    update_vga_cursor_locked();
     
     // Also sync serial cursor
     const serial = @import("serial.zig");
     serial.serial_set_cursor(cursor_row, cursor_col);
+}
+
+pub export fn update_hardware_cursor() void {
+    vga_lock.acquire();
+    defer vga_lock.release();
+    update_hardware_cursor_locked();
 }
 
 fn outb(port: u16, val: u8) void {

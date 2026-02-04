@@ -83,7 +83,7 @@ actual_code:
     call init_serial            ; Setup COM1 for logging
     call zig_init               ; Initialize Zig modules (FS, etc)
 
-    sti                         ; Re-enable interrupts
+    ; Interrupts will be enabled in Zig after APIC init
     
     ; 6. Print Welcome Messages
     call print_welcome

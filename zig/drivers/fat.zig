@@ -1,6 +1,9 @@
 // FAT12/16 Filesystem Driver
 const common = @import("../commands/common.zig");
 const ata = @import("ata.zig");
+const sync = @import("../sync.zig");
+
+var fat_lock = sync.Spinlock{};
 
 pub const FatType = enum {
     None,
@@ -119,6 +122,8 @@ fn extract_lfn_part(buf: []const u8, start: usize, count: usize, out: []u8, out_
 }
 
 pub fn list_directory(drive: ata.Drive, bpb: BPB, dir_cluster: u32, show_hidden: bool) void {
+    fat_lock.acquire();
+    defer fat_lock.release();
     var lfn: LfnState = .{ .buf = [_]u8{0} ** 256, .active = false, .checksum = 0 };
     
     if (dir_cluster == 0) {
@@ -262,6 +267,8 @@ fn list_sector(drive: ata.Drive, sector: u32, show_hidden: bool, lfn: *LfnState)
 }
 
 pub fn read_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8, output: [*]u8) i32 {
+    fat_lock.acquire();
+    defer fat_lock.release();
     if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
         return read_file_literal(drive, bpb, res.dir_cluster, res.file_name, output);
     }
@@ -299,6 +306,8 @@ pub fn read_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []c
 
 /// Streams a file to the console without loading it all into RAM
 pub fn stream_to_console(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8) bool {
+    fat_lock.acquire();
+    defer fat_lock.release();
     if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
         return stream_to_console_literal(drive, bpb, res.dir_cluster, res.file_name);
     }
@@ -654,6 +663,8 @@ pub fn find_entry_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []
 }
 
 pub fn delete_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8) bool {
+    fat_lock.acquire();
+    defer fat_lock.release();
     if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
         return delete_file_literal(drive, bpb, res.dir_cluster, res.file_name);
     }
@@ -673,6 +684,8 @@ fn delete_file_literal(drive: ata.Drive, bpb: BPB, dir_cluster: u32, name: []con
 }
 
 pub fn delete_directory(drive: ata.Drive, bpb: BPB, parent_cluster: u32, path: []const u8, recursive: bool) bool {
+    fat_lock.acquire();
+    defer fat_lock.release();
     if (resolve_path(drive, bpb, parent_cluster, path)) |res| {
         return delete_directory_literal(drive, bpb, res.dir_cluster, res.file_name, recursive);
     }
@@ -1013,6 +1026,8 @@ fn free_cluster_chain(drive: ata.Drive, bpb: BPB, start_cluster: u32) void {
 }
 
 pub fn write_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8, data: []const u8) bool {
+    fat_lock.acquire();
+    defer fat_lock.release();
     if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
         return write_file_literal(drive, bpb, res.dir_cluster, res.file_name, data);
     }
@@ -1020,10 +1035,18 @@ pub fn write_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8
 }
 
 pub fn append_to_file(drive: ata.Drive, bpb: BPB, dir_cluster: u32, path: []const u8, data: []const u8) bool {
+    fat_lock.acquire();
+    defer fat_lock.release();
     if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
         return append_to_file_literal(drive, bpb, res.dir_cluster, res.file_name, data);
     } else {
-        return write_file(drive, bpb, dir_cluster, path, data);
+        // Recalling write_file would re-acquire the lock if not careful.
+        // But since we want the whole operation to be atomic, we should have internal _unlocked versions
+        // if we were to be super rigorous. For now, let's just use the same pattern.
+        if (resolve_path(drive, bpb, dir_cluster, path)) |res| {
+            return write_file_literal(drive, bpb, res.dir_cluster, res.file_name, data);
+        }
+        return false;
     }
 }
 

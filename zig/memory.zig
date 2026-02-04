@@ -1,6 +1,7 @@
 // NewOS Memory Management Module - Advanced Edition
 const common = @import("commands/common.zig");
 const config = @import("config.zig");
+const sync = @import("sync.zig");
 
 pub const PAGE_SIZE = 4096;
 pub const MAX_MEMORY = 128 * 1024 * 1024; // 128MB
@@ -11,10 +12,13 @@ extern const ebss: anyopaque;
 
 var bitmap: [BITMAP_SIZE]u8 = [_]u8{0} ** BITMAP_SIZE;
 var last_free_page: u32 = 0;
+var pmm_lock = sync.Spinlock{};
 
 /// Physical Memory Manager (PMM)
 pub const pmm = struct {
     pub fn init() void {
+        pmm_lock.acquire();
+        defer pmm_lock.release();
         const kernel_end = @intFromPtr(&ebss);
         for (&bitmap) |*b| b.* = 0;
         const reserved_up_to = if (kernel_end < 0x100000) 0x100000 else kernel_end;
@@ -24,6 +28,8 @@ pub const pmm = struct {
     }
 
     pub fn alloc_page() ?usize {
+        pmm_lock.acquire();
+        defer pmm_lock.release();
         var i = last_free_page;
         while (i < TOTAL_PAGES) : (i += 1) {
             if (!is_page_busy(i)) {
@@ -36,6 +42,8 @@ pub const pmm = struct {
     }
 
     pub fn free_page(addr: usize) void {
+        pmm_lock.acquire();
+        defer pmm_lock.release();
         const idx = @as(u32, @intCast(addr / PAGE_SIZE));
         clear_page_busy(idx);
         if (idx < last_free_page) last_free_page = idx;
@@ -66,9 +74,12 @@ const BlockHeader = struct {
 };
 
 var first_block: ?*BlockHeader = null;
+var heap_lock = sync.Spinlock{};
 
 pub const heap = struct {
     pub fn init() void {
+        heap_lock.acquire();
+        defer heap_lock.release();
         if (pmm.alloc_page()) |addr| {
             first_block = @as(*BlockHeader, @ptrFromInt(addr));
             first_block.?.* = .{
@@ -80,6 +91,12 @@ pub const heap = struct {
     }
 
     pub fn alloc(size: usize) ?[*]u8 {
+        heap_lock.acquire();
+        defer heap_lock.release();
+        return alloc_unlocked(size);
+    }
+
+    fn alloc_unlocked(size: usize) ?[*]u8 {
         // Align to 8 bytes
         const aligned_size = (size + 7) & ~@as(usize, 7);
         var current = first_block;
@@ -119,20 +136,23 @@ pub const heap = struct {
             last.?.next = new_block;
             
             // Try allotting again now that we have space
-            return alloc(size);
+            return alloc_unlocked(size);
         }
 
         return null;
     }
 
     pub fn free(ptr: [*]u8) void {
+        heap_lock.acquire();
+        defer heap_lock.release();
+
         const header_ptr = @intFromPtr(ptr) - @sizeOf(BlockHeader);
         const header = @as(*BlockHeader, @ptrFromInt(header_ptr));
         header.is_free = true;
         
         // If GC is on, we might trigger a collection or let the collector handle it
         if (config.USE_GARBAGE_COLLECTOR) {
-            garbage_collect();
+            garbage_collect_unlocked();
         } else {
             // Simple immediate coalescing with next block
             coalesce();
@@ -144,6 +164,12 @@ pub const heap = struct {
     pub fn garbage_collect() void {
         if (!config.USE_GARBAGE_COLLECTOR) return;
         
+        heap_lock.acquire();
+        defer heap_lock.release();
+        garbage_collect_unlocked();
+    }
+
+    fn garbage_collect_unlocked() void {
         common.printZ("GC: Running memory cleanup...\n");
         coalesce();
     }

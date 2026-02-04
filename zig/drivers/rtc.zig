@@ -1,5 +1,8 @@
 // CMOS Real Time Clock (RTC) Driver
 const common = @import("../commands/common.zig");
+const sync = @import("../sync.zig");
+
+var rtc_lock = sync.Spinlock{};
 
 const CMOS_ADDR = 0x70;
 const CMOS_DATA = 0x71;
@@ -24,6 +27,9 @@ pub const DateTime = struct {
 };
 
 pub fn get_datetime() DateTime {
+    rtc_lock.acquire();
+    defer rtc_lock.release();
+
     while (is_updating()) {}
     
     var second = read_rtc(0x00);

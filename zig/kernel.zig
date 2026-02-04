@@ -9,7 +9,10 @@ const shell = @import("shell.zig");
 const messages = @import("messages.zig");
 const timer = @import("drivers/timer.zig");
 const acpi = @import("drivers/acpi.zig");
+const apic = @import("drivers/apic.zig");
 const memory = @import("memory.zig");
+const sync = @import("sync.zig");
+const scheduler = @import("scheduler.zig");
 
 
 // Ensure all modules are included in the compilation
@@ -92,6 +95,31 @@ fn inb(port: u16) u8 {
     );
 }
 
+extern const kernel_idt_descriptor: anyopaque;
+
+/// AP Entry Point (Application Processors)
+export fn ap_main() callconv(.c) void {
+    // Load IDT for this core
+    asm volatile ("lidt (%[ptr])" : : [ptr] "r" (&kernel_idt_descriptor));
+
+    apic.init_lapic();
+
+    // Each AP enters the polling loop
+    ap_polling_loop();
+}
+
+fn ap_polling_loop() noreturn {
+    while (true) {
+        if (scheduler.dequeue()) |task| {
+            @atomicStore(scheduler.TaskStatus, &task.status, .Running, .seq_cst);
+            task.func(task.arg);
+            @atomicStore(scheduler.TaskStatus, &task.status, .Done, .seq_cst);
+        } else {
+            asm volatile ("pause");
+        }
+    }
+}
+
 // --- Kernel Entry Point ---
 export fn kmain() void {
     // 1. Initialize PMM & Heap
@@ -106,7 +134,14 @@ export fn kmain() void {
     timer.init();
     
     // Initialize ACPI (for proper shutdown)
-    _ = acpi.init();
+    if (acpi.init()) {
+        // Initialize APIC and Boot APs
+        apic.init();
+        apic.boot_aps(ap_main);
+    }
+
+    // Enable interrupts on Master Core
+    asm volatile ("sti");
 
     // Main Shell loop
     while (true) {

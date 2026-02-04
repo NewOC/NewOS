@@ -16,6 +16,7 @@ if %errorlevel% neq 0 (
 :: Assemble kernel to ELF object file
 echo Assembling kernel...
 nasm -f elf32 kernel32.asm -o build\kernel32.o
+nasm -f elf32 trampoline.asm -o build\trampoline.o
 if %errorlevel% neq 0 (
     echo Error assembling kernel!
     pause
@@ -36,7 +37,7 @@ popd
 
 :: Link kernel with Zig modules (strip during link)
 echo Linking...
-zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build\kernel32.elf build\kernel32.o zig\build\kernel.o
+zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build\kernel32.elf build\kernel32.o build\trampoline.o zig\build\kernel.o
 if %errorlevel% neq 0 (
     echo Error linking!
     pause
