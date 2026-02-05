@@ -27,6 +27,19 @@ pub export fn cmd_docs(args: [*]const u8, args_len: u32) void {
     docs.execute(args[0..args_len]);
 }
 
+pub export fn cmd_pwd() void {
+    if (common.selected_disk >= 0) {
+        common.print_char(@intCast(@as(u8, @intCast(common.selected_disk)) + '0'));
+        common.print_char(':');
+    }
+    if (common.current_path_len == 0) {
+        common.printZ("/");
+    } else {
+        common.printZ(common.current_path[0..common.current_path_len]);
+    }
+    common.printZ("\n");
+}
+
 pub export fn cmd_cp(args_ptr: [*]const u8, args_len: u32) void {
     file_utils.cmd_cp(args_ptr[0..args_len]);
 }
@@ -52,18 +65,18 @@ pub export fn cmd_mkfs(args_ptr: [*]const u8, args_len: u32) void {
 pub export fn cmd_ls(args_ptr: [*]const u8, args_len: u32) void {
     const raw_args = args_ptr[0..args_len];
     
-    // Parse -a flag
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(raw_args, &argv);
+
     var show_hidden = false;
-    var args = raw_args;
+    var path_arg: ?[]const u8 = null;
     
-    if (raw_args.len >= 2 and raw_args[0] == '-' and raw_args[1] == 'a') {
-        show_hidden = true;
-        if (raw_args.len > 2) {
-            var start: usize = 2;
-            while (start < raw_args.len and raw_args[start] == ' ') : (start += 1) {}
-            args = raw_args[start..];
-        } else {
-            args = "";
+    var i: usize = 0;
+    while (i < argc) : (i += 1) {
+        if (common.std_mem_eql(argv[i], "-a")) {
+            show_hidden = true;
+        } else if (path_arg == null) {
+            path_arg = argv[i];
         }
     }
 
@@ -72,21 +85,21 @@ pub export fn cmd_ls(args_ptr: [*]const u8, args_len: u32) void {
     } else {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            if (args.len == 0) {
+            if (path_arg == null) {
                 fat.list_directory(drive, bpb, common.current_dir_cluster, show_hidden);
             } else {
-                if (fat.resolve_path(drive, bpb, common.current_dir_cluster, args)) |res| {
-                    if (fat.find_entry_literal(drive, bpb, res.dir_cluster, res.file_name)) |entry| {
-                        if ((entry.attr & 0x10) != 0) {
-                            fat.list_directory(drive, bpb, entry.first_cluster_low, show_hidden);
-                        } else {
-                            common.printZ("Error: Not a directory\n");
-                        }
+                if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], path_arg.?)) |res| {
+                    if (res.is_dir) {
+                        fat.list_directory(drive, bpb, res.cluster, show_hidden);
                     } else {
-                        common.printZ("Error: Path not found\n");
+                        common.printZ("ls: cannot access ");
+                        common.printZ(path_arg.?);
+                        common.printZ(": Not a directory\n");
                     }
                 } else {
-                    common.printZ("Error: Path resolve failed\n");
+                    common.printZ("ls: cannot access ");
+                    common.printZ(path_arg.?);
+                    common.printZ(": No such file or directory\n");
                 }
             }
         } else {
@@ -97,12 +110,20 @@ pub export fn cmd_ls(args_ptr: [*]const u8, args_len: u32) void {
 
 /// Execute 'cat' command for a given filename
 pub export fn cmd_cat(name_ptr: [*]const u8, name_len: u32) void {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: cat <file>\n");
+        return;
+    }
+    const name = argv[0];
+
     if (common.selected_disk < 0) {
-        cat.execute(name_ptr, @intCast(name_len));
+        cat.execute(name.ptr, @intCast(name.len));
     } else {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            if (!fat.stream_to_console(drive, bpb, common.current_dir_cluster, name_ptr[0..name_len])) {
+            if (!fat.stream_to_console(drive, bpb, common.current_dir_cluster, name)) {
                 common.printZ("Error: File not found\n");
             }
         }
@@ -111,12 +132,20 @@ pub export fn cmd_cat(name_ptr: [*]const u8, name_len: u32) void {
 
 /// Execute 'touch' command to create a file
 pub export fn cmd_touch(name_ptr: [*]const u8, name_len: u32) void {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: touch <file>\n");
+        return;
+    }
+    const name = argv[0];
+
     if (common.selected_disk < 0) {
-        touch.execute(name_ptr, @intCast(name_len));
+        touch.execute(name.ptr, @intCast(name.len));
     } else {
         const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
         if (fat.read_bpb(drive)) |bpb| {
-            if (!fat.write_file(drive, bpb, common.current_dir_cluster, name_ptr[0..name_len], "")) {
+            if (!fat.write_file(drive, bpb, common.current_dir_cluster, name, "")) {
                 common.printZ("Error: Failed to create file on disk\n");
             }
         } else {
@@ -133,8 +162,10 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
     }
 
     const args_raw = args_ptr[0..args_len];
-    const args = common.trim(args_raw);
-    if (args.len == 0) {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args_raw, &argv);
+
+    if (argc == 0) {
         common.printZ("Usage: rm [-d] [-r] <file|*>\n");
         return;
     }
@@ -144,17 +175,7 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
     var sure = false;
     var target: []const u8 = "";
 
-    // Basic space-based split for flags
-    var i: usize = 0;
-    while (i < args.len) {
-        // Skip spaces
-        while (i < args.len and args[i] == ' ') : (i += 1) {}
-        if (i >= args.len) break;
-        
-        const start = i;
-        while (i < args.len and args[i] != ' ') : (i += 1) {}
-        const arg = args[start..i];
-
+    for (argv[0..argc]) |arg| {
         if (common.std_mem_eql(arg, "-r")) {
             recursive = true;
         } else if (common.std_mem_eql(arg, "-d")) {
@@ -185,12 +206,86 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
 
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     if (fat.read_bpb(drive)) |bpb| {
+        var prefix: []const u8 = "";
+        var is_wildcard = false;
+        var wildcard_dir_path: []const u8 = "";
+
         if (common.std_mem_eql(target, "*")) {
-            fat.delete_all_in_directory(drive, bpb, common.current_dir_cluster, recursive, delete_dirs);
-            common.printZ("Target contents deleted.\n");
+            is_wildcard = true;
+            wildcard_dir_path = ".";
+            prefix = "";
+        } else if (common.std_mem_eql(target, ".*")) {
+            is_wildcard = true;
+            wildcard_dir_path = ".";
+            prefix = ".";
+        } else if (common.endsWith(target, "/*")) {
+            is_wildcard = true;
+            wildcard_dir_path = target[0..target.len - 2];
+            if (wildcard_dir_path.len == 0) wildcard_dir_path = "/";
+            prefix = "";
+        } else if (common.endsWith(target, "/.*")) {
+            is_wildcard = true;
+            wildcard_dir_path = target[0..target.len - 3];
+            if (wildcard_dir_path.len == 0) wildcard_dir_path = "/";
+            prefix = ".";
+        }
+
+        if (is_wildcard) {
+            if (prefix.len == 0 and (!recursive or !delete_dirs or !sure)) {
+                common.printZ("Are you sure? I worked so hard on these files...\n");
+                common.printZ("To delete EVERYTHING in '");
+                common.printZ(wildcard_dir_path);
+                common.printZ("' (files & folders), use: rm -dr ");
+                common.printZ(target);
+                common.printZ(" --yes-i-am-sure\n");
+                return;
+            }
+
+            if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], wildcard_dir_path)) |res| {
+                if (res.is_dir) {
+                    fat.delete_all_in_directory(drive, bpb, res.cluster, recursive, delete_dirs, prefix);
+                    common.printZ("Target contents deleted.\n");
+                } else {
+                    common.printZ("Error: Not a directory: ");
+                    common.printZ(wildcard_dir_path);
+                    common.printZ("\n");
+                }
+            } else {
+                common.printZ("Error: Directory not found: ");
+                common.printZ(wildcard_dir_path);
+                common.printZ("\n");
+            }
         } else {
+            // Handle single target (can be a path)
+            var parent_cluster = common.current_dir_cluster;
+            var final_name = target;
+
+            if (common.lastIndexOf(target, '/')) |idx| {
+                const parent_path = if (idx == 0) "/" else target[0..idx];
+                final_name = target[idx+1..];
+                if (final_name.len == 0) {
+                     common.printZ("Error: Invalid target name\n");
+                     return;
+                }
+                if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], parent_path)) |res| {
+                    if (res.is_dir) {
+                        parent_cluster = res.cluster;
+                    } else {
+                        common.printZ("Error: Not a directory: ");
+                        common.printZ(parent_path);
+                        common.printZ("\n");
+                        return;
+                    }
+                } else {
+                    common.printZ("Error: Parent path not found: ");
+                    common.printZ(parent_path);
+                    common.printZ("\n");
+                    return;
+                }
+            }
+
             if (recursive or delete_dirs) {
-                if (fat.delete_directory(drive, bpb, common.current_dir_cluster, target, recursive)) {
+                if (fat.delete_directory(drive, bpb, parent_cluster, final_name, recursive)) {
                     common.printZ("Deleted: ");
                     common.printZ(target);
                     common.printZ("\n");
@@ -199,14 +294,14 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
                 }
             } else {
                 // Check if it's a directory before deleting as file
-                if (fat.find_entry(drive, bpb, common.current_dir_cluster, target)) |entry| {
+                if (fat.find_entry(drive, bpb, parent_cluster, final_name)) |entry| {
                     if ((entry.attr & 0x10) != 0) {
                         common.printZ("Error: Target is a directory (use -d)\n");
                         return;
                     }
                 }
                 
-                if (fat.delete_file(drive, bpb, common.current_dir_cluster, target)) {
+                if (fat.delete_file(drive, bpb, parent_cluster, final_name)) {
                     common.printZ("Deleted: ");
                     common.printZ(target);
                     common.printZ("\n");
@@ -347,84 +442,66 @@ pub export fn cmd_mkdir(name_ptr: [*]const u8, name_len: u32) void {
         common.printZ("Error: mkdir only supported on Disk FS\n");
         return;
     }
+
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: mkdir <name>\n");
+        return;
+    }
+
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     if (fat.read_bpb(drive)) |bpb| {
-        if (!fat.create_directory(drive, bpb, common.current_dir_cluster, name_ptr[0..name_len])) {
+        if (!fat.create_directory(drive, bpb, common.current_dir_cluster, argv[0])) {
             common.printZ("Error: Failed to create directory\n");
         }
     }
 }
 
-pub export fn cmd_cd(name_ptr: [*]const u8, name_len: u32) void {
+pub export fn cmd_cd(args_ptr: [*]const u8, args_len: u32) void {
     if (common.selected_disk < 0) {
         common.printZ("Error: cd only supported on Disk FS\n");
         return;
     }
+
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args_ptr[0..args_len], &argv);
+
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
-    const name = name_ptr[0..name_len];
+    const bpb = fat.read_bpb(drive) orelse {
+        common.printZ("Error: Disk not formatted\n");
+        return;
+    };
 
-    if (fat.read_bpb(drive)) |bpb| {
-        if (name.len == 0 or common.std_mem_eql(name, "/")) {
-            common.current_dir_cluster = 0;
-            common.current_path_len = 0;
-            return;
-        }
+    if (argc == 0 or common.std_mem_eql(argv[0], "/")) {
+        common.current_dir_cluster = 0;
+        common.current_path_len = 0;
+        return;
+    }
 
-        if (common.std_mem_eql(name, ".")) {
-            common.printZ("Wow, you're already here!\n");
-            return;
-        }
+    const path = argv[0];
+    if (common.std_mem_eql(path, ".")) {
+        common.printZ("Wow, you're already here!\n");
+        return;
+    }
 
-        if (common.std_mem_eql(name, "..")) {
-            if (common.current_dir_cluster == 0) {
-                common.printZ("There is no escape from the root!\n");
-                return;
-            }
-            const entry = fat.find_entry(drive, bpb, common.current_dir_cluster, "..") orelse {
-                common.current_dir_cluster = 0;
-                common.current_path_len = 0;
-                return;
-            };
-            common.current_dir_cluster = entry.first_cluster_low;
-            // Update path (pop last part)
-            if (common.current_path_len > 0) {
-                var p = common.current_path_len - 1;
-                while (p > 0 and common.current_path[p] != '/') : (p -= 1) {}
-                common.current_path_len = p;
-            }
-            return;
-        }
-
-        if (fat.resolve_path(drive, bpb, common.current_dir_cluster, name)) |res| {
-            if (fat.find_entry(drive, bpb, res.dir_cluster, res.file_name)) |entry| {
-                if ((entry.attr & 0x10) != 0) {
-                    common.current_dir_cluster = entry.first_cluster_low;
-                    // Append or update path
-                    if (args_only_for_cd(name)) {
-                        // If user used ../... we might want to recalculate full path or just handle it.
-                        // For now simple append.
-                        if (common.current_path_len + 1 + res.file_name.len < 256) {
-                            common.current_path[common.current_path_len] = '/';
-                            for (res.file_name, 0..) |c, k| common.current_path[common.current_path_len + 1 + k] = c;
-                            common.current_path_len += 1 + res.file_name.len;
-                        }
-                    }
-                } else {
-                    common.printZ("Error: Not a directory\n");
-                }
-            } else {
-                common.printZ("Error: Directory not found\n");
+    if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], path)) |res| {
+        if (res.is_dir) {
+            common.current_dir_cluster = res.cluster;
+            common.current_path_len = res.path_len;
+            for (res.path[0..res.path_len], 0..) |c, i| {
+                common.current_path[i] = c;
             }
         } else {
-            common.printZ("Error: Path not resolved\n");
+            common.printZ("cd: Not a directory: ");
+            common.printZ(path);
+            common.printZ("\n");
         }
+    } else {
+        common.printZ("cd: no such directory: ");
+        common.printZ(path);
+        common.printZ("\n");
     }
-}
-
-fn args_only_for_cd(name: []const u8) bool {
-    // Helper to determine if we should update path simply
-    if (common.std_mem_eql(name, ".") or common.std_mem_eql(name, "..")) return false;
-    return true;
 }
 
 pub export fn cmd_tree() void {
@@ -490,8 +567,8 @@ fn tree_sector(drive: ata.Drive, bpb: fat.BPB, buffer: *[512]u8, depth: usize) b
     return true;
 }
 
-/// Execute 'write' operation (create or overwrite file)
-pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const u8, data_len: u32) void {
+/// Execute 'write' operation (create, overwrite or append to file)
+pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const u8, data_len: u32, append: bool) void {
     if (common.selected_disk < 0) {
         var id = common.fs_find(name_ptr, @intCast(name_len));
         if (id < 0) {
@@ -505,7 +582,10 @@ pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const
         if (fat.read_bpb(drive)) |bpb| {
             const name = name_ptr[0..name_len];
             const data = data_ptr[0..data_len];
-            if (!fat.write_file(drive, bpb, common.current_dir_cluster, name, data)) {
+            const success = if (append) fat.append_to_file(drive, bpb, common.current_dir_cluster, name, data)
+                            else fat.write_file(drive, bpb, common.current_dir_cluster, name, data);
+
+            if (!success) {
                 common.printZ("Error: Failed to write file to disk\n");
             }
         }
@@ -513,7 +593,13 @@ pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const
 }
 
 pub export fn cmd_edit(name_ptr: [*]const u8, name_len: u32) void {
-    edit.execute(name_ptr[0..name_len]);
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(name_ptr[0..name_len], &argv);
+    if (argc == 0) {
+        common.printZ("Usage: edit <file>\n");
+        return;
+    }
+    edit.execute(argv[0]);
 }
 
 pub export fn cmd_sysinfo() void {

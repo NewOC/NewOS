@@ -25,6 +25,8 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 - ✅ **Embedded Scripts** - Built-in commands written in Nova (`syscheck`, `hello`)
 - ✅ **Native Commands** - Native implementation of `install` and `uninstall` for Nova scripts
 - ✅ **Recursive FS** - `cp` and `delete` now support recursive directory operations
+- ✅ **Hierarchical Paths** - Full support for **Current Working Directory (CWD)**, absolute/relative paths, and quoted arguments for spaces
+- ✅ **Serial Terminal** - Support for QEMU `-nographic` mode with full bidirectional shell interaction
 
 ### Building and Running
 
@@ -43,6 +45,11 @@ NewOS is a simple operating system that successfully boots from 16-bit real mode
 qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,file=disk.img
 ```
 
+**Run (No Graphics/Serial):**
+```bash
+qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,file=disk.img -nographic
+```
+
 ### Available Commands
 
 - `help`           - Show available commands (auto-synced)
@@ -55,6 +62,8 @@ qemu-system-i386 -drive format=raw,file=build\os-image.bin -drive format=raw,fil
 - `reboot`         - Reboot system
 - `shutdown`       - Shutdown system (ACPI support)
 - `ls`, `la`        - List files (la shows hidden files)
+- `pwd`             - Print current working directory
+- `cd <path>`       - Change directory (supports `..`, `/`, and relative paths)
 - `lsdsk`          - List storage devices and partitions
 - `mount <d>`      - Select active disk (0/1 or ram)
 - `touch <file>`   - Create file on disk (Supports LFN)
@@ -115,6 +124,7 @@ BIOS → Bootloader (16-bit) → Protected Mode Switch → Kernel (32-bit) → Z
 - [x] Persistent command history on disk (Hidden `.HISTORY`)
 - [x] FAT12/FAT16 file system with **LFN and Hidden Files**
 - [x] Recursive Directory Operations (cp, rm)
+- [x] **Hierarchical Path Support & CWD** (Absolute/Relative paths, cd, pwd)
 - [x] Built-in Text Editor (`edit`)
 - [x] Dynamic Shell Commands table
 - [x] Nova Language v0.12 (History, Autocomplete, Sci-Math, Scripts)

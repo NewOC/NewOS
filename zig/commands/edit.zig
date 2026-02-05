@@ -2,6 +2,7 @@
 const common = @import("common.zig");
 const keyboard = @import("../keyboard_isr.zig");
 const vga = @import("../drivers/vga.zig");
+const serial = @import("../drivers/serial.zig");
 const fat = @import("../drivers/fat.zig");
 const ata = @import("../drivers/ata.zig");
 
@@ -47,8 +48,25 @@ pub fn execute(name: []const u8) void {
     // 3. Editor loop
     vga.save_screen_buffer();
     vga.clear_screen();
+    serial.serial_clear_screen();
+
+    var last_cursor_pos: usize = 9999;
+    var last_buf_len: usize = 9999;
+    var last_viewport_top: usize = 9999;
+
     while (true) {
-        draw_ui();
+        const needs_redraw = (cursor_pos != last_cursor_pos or buf_len != last_buf_len or viewport_top != last_viewport_top);
+        if (needs_redraw) {
+            serial.serial_hide_cursor();
+            draw_ui();
+            last_cursor_pos = cursor_pos;
+            last_buf_len = buf_len;
+            last_viewport_top = viewport_top;
+            serial.serial_show_cursor();
+        } else {
+            vga.update_hardware_cursor();
+        }
+
         const char = keyboard.keyboard_wait_char();
         const ctrl = keyboard.keyboard_get_ctrl();
 
@@ -56,12 +74,19 @@ pub fn execute(name: []const u8) void {
              if (!(ctrl and char == 's')) status_len = 0;
         }
 
-        if (ctrl and (char == 's' or char == 'S')) {
+        // Support both hardware Ctrl and ASCII control chars from serial
+        const is_save = (ctrl and (char == 's' or char == 'S')) or char == 19; // Ctrl+S
+        const is_quit = (ctrl and (char == 'q' or char == 'Q')) or char == 17 or char == 3; // Ctrl+Q or Ctrl+C
+        const is_cut  = (ctrl and (char == 'k' or char == 'K')) or char == 11; // Ctrl+K
+        const is_paste= (ctrl and (char == 'u' or char == 'U')) or char == 21; // Ctrl+U
+
+        if (is_save) {
             save_file();
             status_msg("File saved!");
             continue;
         }
-        if (ctrl and (char == 'q' or char == 'Q')) {
+        if (is_quit) {
+            if (char == 3) break; // Emergency exit on Ctrl+C
             if (is_modified) {
                 const choice = show_exit_dialog();
                 if (choice == .Cancel) continue;
@@ -71,13 +96,11 @@ pub fn execute(name: []const u8) void {
             break;
         }
         
-        // Cut line (Ctrl+K)
-        if (ctrl and (char == 'k' or char == 'K')) {
+        if (is_cut) {
             cut_line();
             continue;
         }
-        // Paste line (Ctrl+U)
-        if (ctrl and (char == 'u' or char == 'U')) {
+        if (is_paste) {
             paste_line();
             continue;
         }
@@ -147,6 +170,25 @@ fn draw_ui() void {
     draw_text_at(24, 1, "^S Save ^Q Exit ^K Cut ^U Paste", attr_bar);
 
     if (status_len > 0) draw_text_at(24, 40, current_status[0..status_len], 0x7E00);
+
+    // Serial UI sync
+    serial.serial_set_cursor(0, 0);
+    serial.serial_set_color(0); // Black bg
+    serial.serial_print_str("NewOS Editor - ");
+    serial.serial_print_str(filename[0..filename_len]);
+    if (is_modified) serial.serial_print_str(" [*]");
+    serial.serial_print_str("    ");
+    serial.serial_print_str(pos_str);
+    serial.serial_clear_line();
+
+    serial.serial_set_cursor(24, 0);
+    serial.serial_print_str("^S Save ^Q Exit ^K Cut ^U Paste");
+    if (status_len > 0) {
+        serial.serial_print_str("  ");
+        serial.serial_print_str(current_status[0..status_len]);
+    }
+    serial.serial_clear_line();
+
     draw_content();
 }
 
@@ -173,12 +215,27 @@ fn draw_content() void {
     var r: usize = 1;
     var c: usize = 0;
     var i: usize = 0;
+
+    serial.serial_set_color(7); // White fg
+
+    var last_draw_r: usize = 999;
+    i = 0;
+    r = 1;
+    c = 0;
     while (i <= buf_len) : (i += 1) {
         const cur_screen_row = r - 1;
         if (cur_screen_row >= viewport_top and cur_screen_row < viewport_top + ROWS) {
             const draw_r = cur_screen_row - viewport_top + 1;
             if (i < buf_len and buffer[i] != '\n') {
                 vga.VIDEO_MEMORY[draw_r * 80 + c] = 0x0F00 | @as(u16, buffer[i]);
+
+                // Serial draw optimization: only set cursor if we moved to a new line
+                if (draw_r != last_draw_r) {
+                    serial.serial_set_cursor(@intCast(draw_r), @intCast(c));
+                    serial.serial_clear_line();
+                    last_draw_r = draw_r;
+                }
+                serial.serial_print_char(buffer[i]);
             }
         }
 
@@ -199,6 +256,7 @@ fn draw_content() void {
     
     const final_r = coords.r - 1 - viewport_top + 1;
     vga.zig_set_cursor(@intCast(final_r), @intCast(coords.c));
+    serial.serial_set_cursor(@intCast(vga.zig_get_cursor_row()), @intCast(vga.zig_get_cursor_col()));
 }
 
 fn cut_line() void {
@@ -270,11 +328,18 @@ fn show_exit_dialog() ExitChoice {
     draw_text_at(box_row + 3, box_col + 2, "^S: Save & Exit", 0x1F00);
     draw_text_at(box_row + 4, box_col + 2, "^X: Discard", 0x1F00);
     draw_text_at(box_row + 4, box_col + 30, "Esc: Cancel", 0x1F00);
+
+    // Serial dialog
+    serial.serial_set_cursor(box_row, box_col);
+    serial.serial_print_str("[ FILE MODIFIED! SAVE CHANGES? ]");
+    serial.serial_set_cursor(box_row + 1, box_col);
+    serial.serial_print_str("^S: Save, ^X: Discard, Esc: Cancel");
+
     while (true) {
         const key = keyboard.keyboard_wait_char();
         const ctrl = keyboard.keyboard_get_ctrl();
-        if (ctrl and (key == 's' or key == 'S')) return .Save;
-        if (ctrl and (key == 'x' or key == 'X')) return .DontSave;
+        if ((ctrl and (key == 's' or key == 'S')) or key == 19) return .Save;
+        if ((ctrl and (key == 'x' or key == 'X')) or key == 24) return .DontSave; // Ctrl+X is 24
         if (key == 27) return .Cancel;
     }
 }

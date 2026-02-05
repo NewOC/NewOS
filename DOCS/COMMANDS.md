@@ -10,11 +10,12 @@ Comprehensive documentation for all built-in NewOS shell commands.
 |---------|-------------|-------|
 | `help` | Show command list | `help [page]` |
 | `ls` | List files/folders | `ls [path]` |
-| `cd` | Change directory | `cd <dir|..|/>` |
+| `pwd` | Print working directory | `pwd` |
+| `cd` | Change directory | `cd <path>` |
 | `mkdir` | Create directory | `mkdir <name>` |
 | `touch` | Create empty file | `touch <path>` |
 | `edit` | Text editor | `edit <path>` |
-| `write` | Write text to file | `write <path> <text>` |
+| `write` | Write/Append text to file | `write [-a] <path> <text>` |
 | `cat` | View file content | `cat <path>` |
 | `rm` | Delete file/dir | `rm [-d] [-r] <f|*>` |
 | `cp` | Copy file/folder | `cp <src> <dest>` |
@@ -71,20 +72,29 @@ Powers off the system using ACPI commands.
 ### `ls`
 Lists files and directories in the target path or current directory.
 - **Usage:** `ls [path]`
+- **Flags:**
+  - `-l`: Detailed view (if supported)
+  - `-a`: Show hidden files
 - **Examples:**
   - `ls` (Current directory)
   - `ls 123/` (Contents of folder '123')
   - `ls /` (Root directory)
 
+### `pwd`
+Prints the absolute path of the current working directory.
+- **Usage:** `pwd`
+
 ### `cd`
 Changes the current working directory.
-- **Usage:** `cd <dir|..|/>`
+- **Usage:** `cd <path>`
+- **Features:**
+  - Supports absolute paths (starting with `/`) and relative paths.
+  - Supports quoted strings for directory names with spaces (e.g., `cd "New Folder"`).
 - **Navigation:**
   - `cd folder` - Enter a directory.
   - `cd ..` - Go to the parent directory.
   - `cd /` - Return to the root directory.
-- **Easter Eggs:**
-  - Try `cd .` or `cd ..` while already in the root!
+  - `cd .` - Stays in the current directory.
 
 ### `lsdsk`
 Lists all detected storage devices (Master/Slave) and their capacity.
@@ -115,10 +125,12 @@ Creates a new empty file at the specified path.
 - **Example:** `touch logs/boot.log`
 
 ### `write`
-Writes a string of text into a file.
-- **Usage:** `write <file_path> <text>`
-- **Note:** This overwrites the existing content.
-- **Example:** `write hello.txt "Hello World"`
+Writes or appends a string of text into a file.
+- **Usage:** `write [-a] <file_path> <text>`
+- **Options:**
+  - `-a`: Append mode. Adds text to the end of the file instead of overwriting.
+- **Note:** Overwriting an existing file without `-a` will show a warning.
+- **Example:** `write -a logs.txt "New entry"`
 
 ### `cat`
 Displays the text content of a file on the screen.
@@ -180,6 +192,15 @@ Performs a low-level format of the selected drive.
 ### `mkfs`
 Creates a FAT filesystem on the target drive.
 - **Usage:** `mkfs-fat16 0` (Formats Master as FAT16)
+
+---
+## 🔄 Redirection
+NewOS shell supports standard output redirection to files.
+- **Syntax:**
+  - `command > filename`: Overwrites the target file.
+  - `command >> filename`: Appends to the target file.
+- **Example:** `ls >> files.txt`
+- **Note:** Requires a mounted disk.
 
 ---
 *Generated for NewOS v0.10*

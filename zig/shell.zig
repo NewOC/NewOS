@@ -50,11 +50,12 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "mkdir", .help = "mkdir <name> - Create a new directory", .handler = cmd_handler_mkdir },
     .{ .name = "md", .help = "Alias for mkdir", .handler = cmd_handler_mkdir },
     .{ .name = "cd", .help = "cd <dir|..|/> - Change directory", .handler = cmd_handler_cd },
+    .{ .name = "pwd", .help = "Print current working directory", .handler = cmd_handler_pwd },
     .{ .name = "tree", .help = "Display recursive directory structure", .handler = cmd_handler_tree },
     .{ .name = "mkfs-fat12", .help = "Format drive as FAT12 (legacy)", .handler = cmd_handler_mkfs12 },
     .{ .name = "mkfs-fat16", .help = "Format drive as FAT16 (standard)", .handler = cmd_handler_mkfs16 },
     .{ .name = "touch", .help = "Create an empty file", .handler = cmd_handler_touch },
-    .{ .name = "write", .help = "write <f> <t> - Write string to file", .handler = cmd_handler_write },
+    .{ .name = "write", .help = "write [-a] <f> <t> - Write string to file (-a to append)", .handler = cmd_handler_write },
     .{ .name = "rm", .help = "rm [-d] [-r] <f|*> - Delete file/dir", .handler = cmd_handler_rm },
     .{ .name = "cat", .help = "Display text file contents", .handler = cmd_handler_cat },
     .{ .name = "edit", .help = "Open primitive text editor", .handler = cmd_handler_edit },
@@ -136,7 +137,7 @@ pub export fn read_command() void {
 
         if (char == 10) { // Enter
             break;
-        } else if (char == 8) { // Backspace
+        } else if (char == 8 or char == 127) { // Backspace
             if (cmd_pos > 0) {
                 // Shift buffer left
                 var i: usize = cmd_pos - 1;
@@ -306,31 +307,38 @@ fn refresh_line() void {
     // Draw text on VGA. We use zig_print_char to allow natural wrapping.
     // If it scrolls, we need to detect it.
     vga.zig_set_cursor(prompt_row, prompt_col);
-    const row_before = vga.zig_get_cursor_row();
-    for (cmd_buffer[0..cmd_len]) |c| vga.zig_print_char(c);
-    const row_after = vga.zig_get_cursor_row();
-    
-    // If we scrolled, we need to move prompt_row up to stay in sync
-    // This is a bit tricky but 1-row scroll is most common
-    if (row_after < row_before) { // Very likely a scroll happened
-        // Note: this is a simple heuristic. A better way would be a scroll callback.
-        if (prompt_row > 0) prompt_row -= 1;
+    for (cmd_buffer[0..cmd_len]) |c| {
+        const row_before_char = vga.zig_get_cursor_row();
+        vga.zig_print_char(c);
+        const row_after_char = vga.zig_get_cursor_row();
+
+        // Detection of scroll:
+        // 1. row decreased (typical scroll)
+        // 2. row stayed the same but we were on the last row and printed a newline/wrapped
+        // Since zig_print_char handles scroll by staying on the same (last) row,
+        // we need to be careful.
+        if (row_after_char < row_before_char) {
+            if (prompt_row > 0) prompt_row -= 1;
+        } else if (row_before_char == vga.MAX_ROWS - 1 and row_after_char == vga.MAX_ROWS - 1) {
+            // If we are at the last row and we just did a newline or wrapped, it scrolled
+            // Note: internal_newline sets cursor_row to MAX_ROWS - 1 after scroll.
+            // We can check if we wrapped or got a newline.
+            if (c == '\n' or (vga.zig_get_cursor_col() == 0 and c != '\r' and c != 8)) {
+                 if (prompt_row > 0) prompt_row -= 1;
+            }
+        }
     }
     
-    // 2. Serial Update (Terminal-friendly: \r + print whole line)
-    serial.serial_print_char('\r');
-    display_prompt_serial();
+    // 2. Serial Update
+    serial.serial_hide_cursor();
+    serial.serial_set_cursor(prompt_row, prompt_col);
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
-    // Clear tail on serial (3 spaces is enough for small deltas)
-    serial.serial_print_str("   "); 
-    
-    // 3. Move cursor back to position on serial (approximate)
-    serial.serial_print_char('\r');
-    display_prompt_serial();
-    serial.serial_print_str(cmd_buffer[0..saved_pos]);
+    serial.serial_clear_line();
 
     cmd_pos = saved_pos;
     move_screen_cursor();
+    serial.serial_set_cursor(vga.zig_get_cursor_row(), vga.zig_get_cursor_col());
+    serial.serial_show_cursor();
     
     // Update status indicator in top-right corner
     vga.VIDEO_MEMORY[80 - 14] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'C';
@@ -759,10 +767,30 @@ fn autocomplete() void {
 
     if (picked_len > 0) {
         cmd_len = auto_start_pos;
+
+        var needs_quotes = false;
+        for (picked_name_buf[0..picked_len]) |c| {
+            if (c == ' ') {
+                needs_quotes = true;
+                break;
+            }
+        }
+
+        if (needs_quotes) {
+            cmd_buffer[cmd_len] = '"';
+            cmd_len += 1;
+        }
+
         for (0..picked_len) |p| {
             cmd_buffer[cmd_len] = picked_name_buf[p];
             cmd_len += 1;
         }
+
+        if (needs_quotes) {
+            cmd_buffer[cmd_len] = '"';
+            cmd_len += 1;
+        }
+
         if (is_cmd) {
             cmd_buffer[cmd_len] = ' ';
             cmd_len += 1;
@@ -780,112 +808,126 @@ pub export fn execute_command() void {
 }
 
 pub fn shell_execute_literal(cmd: []const u8) void {
-    const cmd_raw = common.trim(cmd);
+    var cmd_raw = common.trim(cmd);
     if (cmd_raw.len == 0) return;
 
-    // Find the end of command name
-    var i: usize = 0;
-    while (i < cmd_raw.len and cmd_raw[i] != ' ') : (i += 1) {}
-    const cmd_name = cmd_raw[0..i];
-    
-    // Skip spaces to find start of args
-    while (i < cmd_raw.len and cmd_raw[i] == ' ') : (i += 1) {}
-    const args_only = cmd_raw[i..];
+    // Output redirection support: cmd > file or cmd >> file
+    var redirect_file: ?[]const u8 = null;
+    var append_mode: bool = false;
+    if (common.std_mem_indexOf(u8, cmd_raw, ">>")) |idx| {
+        append_mode = true;
+        const file_part = common.trim(cmd_raw[idx + 2 ..]);
+        if (file_part.len > 0) {
+            redirect_file = file_part;
+            cmd_raw = common.trim(cmd_raw[0..idx]);
+        }
+    } else if (common.std_mem_indexOf(u8, cmd_raw, ">")) |idx| {
+        append_mode = false;
+        const file_part = common.trim(cmd_raw[idx + 1 ..]);
+        if (file_part.len > 0) {
+            redirect_file = file_part;
+            cmd_raw = common.trim(cmd_raw[0..idx]);
+        }
+    }
 
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(cmd_raw, &argv);
+    if (argc == 0) return;
+
+    if (redirect_file != null) {
+        if (common.selected_disk < 0) {
+            common.printZ("Error: Redirection requires a mounted disk\n");
+            return;
+        }
+        common.redirect_active = true;
+        common.redirect_pos = 0;
+    }
+
+    defer {
+        if (redirect_file) |file| {
+            common.redirect_active = false;
+            const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+            if (fat.read_bpb(drive)) |bpb| {
+                if (append_mode) {
+                    _ = fat.append_to_file(drive, bpb, common.current_dir_cluster, file, common.redirect_buffer[0..common.redirect_pos]);
+                } else {
+                    _ = fat.write_file(drive, bpb, common.current_dir_cluster, file, common.redirect_buffer[0..common.redirect_pos]);
+                }
+            }
+            common.redirect_pos = 0;
+        }
+    }
+
+    const cmd_name = argv[0];
+
+    // 1. Built-in Shell Commands
     for (SHELL_COMMANDS) |sc| {
         if (common.std_mem_eql(sc.name, cmd_name)) {
-            // Special case: help needs full command for pagination logic 
-            // OR we fix help to use args_only. Let's fix help.
+            // Reconstruct args string for legacy handlers
+            var i: usize = 0;
+            while (i < cmd_raw.len and cmd_raw[i] != ' ') : (i += 1) {}
+            while (i < cmd_raw.len and cmd_raw[i] == ' ') : (i += 1) {}
+            const args_only = cmd_raw[i..];
+
             sc.handler(args_only);
             return;
         }
     }
 
-    // Check Built-in Nova Scripts
-    for (BUILTIN_SCRIPTS) |script| {
-        if (common.std_mem_eql(script.name, cmd_name)) {
-            // Parse arguments for the script
-            var s_args: [8][]const u8 = undefined;
-            var s_argc: usize = 0;
-            
-            var n: usize = 0;
-            var in_arg = false;
-            var arg_start: usize = 0;
-            
-            for (args_only, 0..) |c, k| {
-                if (c == ' ') {
-                    if (in_arg) {
-                        if (s_argc < 8) {
-                            s_args[s_argc] = args_only[arg_start..k];
-                            s_argc += 1;
+    // 2. Relative/Absolute Path Scripts (containing /)
+    var contains_slash = false;
+    for (cmd_name) |c| {
+        if (c == '/' or c == '\\') {
+            contains_slash = true;
+            break;
+        }
+    }
+
+    if (contains_slash) {
+        if (common.endsWithIgnoreCase(cmd_name, ".nv")) {
+            if (common.selected_disk >= 0) {
+                const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+                if (fat.read_bpb(drive)) |bpb| {
+                    if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], cmd_name)) |res| {
+                        if (!res.is_dir) {
+                            nova_commands.setScriptArgs(argv[1..argc]);
+                            nova_interpreter.runScript(res.path[0..res.path_len]);
+                            return;
                         }
-                        in_arg = false;
-                    }
-                } else {
-                    if (!in_arg) {
-                        arg_start = k;
-                        in_arg = true;
                     }
                 }
-                n = k;
             }
-            if (in_arg and s_argc < 8) {
-                s_args[s_argc] = args_only[arg_start..n+1];
-                s_argc += 1;
-            }
-            
-            nova_commands.setScriptArgs(s_args[0..s_argc]);
+        } else {
+            common.printZ("shell: Direct path execution requires .nv extension\n");
+            return;
+        }
+    }
+
+    // 3. Built-in Nova Scripts
+    for (BUILTIN_SCRIPTS) |script| {
+        if (common.std_mem_eql(script.name, cmd_name)) {
+            nova_commands.setScriptArgs(argv[1..argc]);
             nova_interpreter.runScriptSource(script.source);
             return;
         }
     }
 
-    // Check External Scripts in .SYSTEM/CMDS/
+    // 4. System Path Scripts (/.SYSTEM/CMDS/<cmd_name>.nv)
     if (common.selected_disk >= 0) {
-        // Construct path: /.SYSTEM/CMDS/<cmd_name>.nv
-        var path_buf: [64]u8 = [_]u8{0} ** 64;
+        var path_buf: [128]u8 = [_]u8{0} ** 128;
         const prefix = "/.SYSTEM/CMDS/";
         const extension = ".nv";
         
-        if (prefix.len + cmd_name.len + extension.len < 64) {
+        if (prefix.len + cmd_name.len + extension.len < 128) {
             common.copy(path_buf[0..], prefix);
             common.copy(path_buf[prefix.len..], cmd_name);
             common.copy(path_buf[prefix.len + cmd_name.len..], extension);
             const full_path = path_buf[0 .. prefix.len + cmd_name.len + extension.len];
 
-            // Check if file exists
             const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
             if (fat.read_bpb(drive)) |bpb| {
                 if (fat.find_entry(drive, bpb, 0, full_path)) |_| {
-                     // Parse arguments for the script
-                    var s_args: [8][]const u8 = undefined;
-                    var s_argc: usize = 0;
-                    var n: usize = 0;
-                    var in_arg = false;
-                    var arg_start: usize = 0;
-                    for (args_only, 0..) |c, k| {
-                        if (c == ' ') {
-                            if (in_arg) {
-                                if (s_argc < 8) {
-                                    s_args[s_argc] = args_only[arg_start..k];
-                                    s_argc += 1;
-                                }
-                                in_arg = false;
-                            }
-                        } else {
-                            if (!in_arg) {
-                                arg_start = k;
-                                in_arg = true;
-                            }
-                        }
-                        n = k;
-                    }
-                    if (in_arg and s_argc < 8) {
-                        s_args[s_argc] = args_only[arg_start..n+1];
-                        s_argc += 1;
-                    }
-                    nova_commands.setScriptArgs(s_args[0..s_argc]);
-                    
+                    nova_commands.setScriptArgs(argv[1..argc]);
                     nova_interpreter.runScript(full_path);
                     return;
                 }
@@ -893,7 +935,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
         }
     }
     
-    common.printZ("Unknown command: ");
+    common.printZ("shell: command not found: ");
     common.printZ(cmd_name);
     common.printZ("\n");
 }
@@ -1015,17 +1057,61 @@ fn cmd_handler_touch(args: []const u8) void {
 }
 
 fn cmd_handler_write(args: []const u8) void {
-    if (args.len > 0) {
-        if (common.std_mem_indexOf(u8, args, " ")) |space| {
-            const name = args[0..space];
-            const data = args[space + 1 ..];
-            shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len));
-        } else {
-            common.printZ("Usage: write <file> <text>\n");
-        }
-    } else {
-        common.printZ("Usage: write <file> <text>\n");
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args, &argv);
+    if (argc < 2) {
+        common.printZ("Usage: write [-a] <file> <text>\n");
+        return;
     }
+
+    var append = false;
+    var arg_idx: usize = 0;
+    if (common.std_mem_eql(argv[0], "-a")) {
+        append = true;
+        arg_idx = 1;
+        if (argc < 2) {
+            common.printZ("Usage: write [-a] <file> <text>\n");
+            return;
+        }
+    }
+
+    const name = argv[arg_idx];
+
+    if (!append and common.selected_disk >= 0) {
+        const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
+        if (fat.read_bpb(drive)) |bpb| {
+            if (fat.find_entry(drive, bpb, common.current_dir_cluster, name)) |_| {
+                common.printZ("Warning: overwriting existing file '");
+                common.printZ(name);
+                common.printZ("'\n");
+            }
+        }
+    }
+
+    // Find the start of the data in the raw string
+    var i: usize = 0;
+    // Skip spaces
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+
+    if (append) {
+        // Skip "-a" and following spaces
+        i += 2;
+        while (i < args.len and args[i] == ' ') : (i += 1) {}
+    }
+
+    // Skip filename
+    if (i < args.len and args[i] == '"') {
+        i += 1;
+        while (i < args.len and args[i] != '"') : (i += 1) {}
+        if (i < args.len) i += 1;
+    } else {
+        while (i < args.len and args[i] != ' ') : (i += 1) {}
+    }
+    // Skip spaces before data
+    while (i < args.len and args[i] == ' ') : (i += 1) {}
+
+    const data = args[i..];
+    shell_cmds.cmd_write(name.ptr, @intCast(name.len), data.ptr, @intCast(data.len), append);
 }
 
 fn cmd_handler_rm(args: []const u8) void {
@@ -1268,6 +1354,10 @@ fn cmd_handler_cd(args: []const u8) void {
         // cd with no args goes to root
         shell_cmds.cmd_cd("/".ptr, 1); 
     }
+}
+
+fn cmd_handler_pwd(_: []const u8) void {
+    shell_cmds.cmd_pwd();
 }
 
 fn cmd_handler_tree(_: []const u8) void {

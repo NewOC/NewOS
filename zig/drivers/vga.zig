@@ -110,7 +110,7 @@ pub export fn zig_print_char(c: u8) void {
         }
     }
     
-    update_hardware_cursor();
+    update_vga_cursor();
 }
 
 pub export fn zig_clear_line(row: u8) void {
@@ -122,12 +122,16 @@ pub export fn zig_clear_line(row: u8) void {
     }
 }
 
-fn update_hardware_cursor() void {
+pub fn update_vga_cursor() void {
     const pos = @as(u16, cursor_row) * 80 + cursor_col;
     outb(0x3D4, 0x0F);
     outb(0x3D5, @intCast(pos & 0xFF));
     outb(0x3D4, 0x0E);
     outb(0x3D5, @intCast((pos >> 8) & 0xFF));
+}
+
+pub export fn update_hardware_cursor() void {
+    update_vga_cursor();
 }
 
 fn outb(port: u16, val: u8) void {

@@ -94,6 +94,10 @@ fn inb(port: u16) u8 {
 
 // --- Kernel Entry Point ---
 export fn kmain() void {
+    // 0. Initialize Serial
+    const serial = @import("drivers/serial.zig");
+    serial.serial_init();
+
     // 1. Initialize PMM & Heap
     memory.pmm.init();
     memory.heap.init();

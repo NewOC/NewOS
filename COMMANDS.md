@@ -17,14 +17,15 @@
 | Command | Description | Usage |
 |---------|-------------|-------|
 | `ls` | List files and folders | `ls [path]` |
-| `cd` | Change current directory | `cd <dir\|..\|/>` |
+| `pwd` | Print working directory | `pwd` |
+| `cd` | Change current directory | `cd <path>` |
 | `lsdsk` | List disks and partitions | `lsdsk` |
 | `mount` | Change active drive | `mount <0/1>` |
 | `mkdir` | Create new directory | `mkdir <name>` |
 | `md` | Alias for `mkdir` | `md <name>` |
 | `tree` | Show directory structure | `tree` |
 | `touch` | Create an empty file | `touch <file_path>` |
-| `write` | Write text to a file | `write <file_path> <text>` |
+| `write` | Write/Append text to a file | `write [-a] <file_path> <text>` |
 | `cat` | View file content | `cat <file_path>` |
 | `cp` | Copy file | `cp <src> <dest>` |
 | `mv` | Move or rename file | `mv <src> <dest>` |
@@ -52,4 +53,6 @@
 | `mkfs` | Create FAT filesystem | `mkfs [type]` |
 
 ---
-*Note: All file system commands support nested paths (e.g., `ls 123/`, `touch data/test.txt`).*
+*Note: All file system commands support hierarchical paths (absolute and relative), `.` (current), `..` (parent) navigation, and quoted strings for names with spaces (e.g., `cd "New Folder"`).*
+
+*Redirection: Most commands support output redirection using `>` (overwrite) or `>>` (append). E.g., `ls > list.txt`, `ls >> list.txt`.*
