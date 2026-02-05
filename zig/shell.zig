@@ -331,15 +331,20 @@ fn refresh_line() void {
     
     // 2. Serial Update
     serial.serial_hide_cursor();
-    serial.serial_set_cursor(prompt_row, prompt_col);
+    serial.serial_print_char('\r');
+    display_prompt_serial();
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
     serial.serial_clear_line();
 
     cmd_pos = saved_pos;
     move_screen_cursor();
-    serial.serial_set_cursor(vga.zig_get_cursor_row(), vga.zig_get_cursor_col());
-    serial.serial_show_cursor();
     
+    // Sync cursor position
+    serial.serial_print_char('\r');
+    display_prompt_serial();
+    serial.serial_print_str(cmd_buffer[0..cmd_pos]);
+    serial.serial_show_cursor();
+
     // Update status indicator in top-right corner
     vga.VIDEO_MEMORY[80 - 14] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'C';
     vga.VIDEO_MEMORY[80 - 13] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'A';

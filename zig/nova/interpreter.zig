@@ -538,13 +538,18 @@ fn refreshLine() void {
     
     // Serial Update
     serial.serial_hide_cursor();
-    serial.serial_set_cursor(prompt_row, prompt_col);
+    serial.serial_print_char('\r');
+    serial.serial_print_str("nova> ");
     serial.serial_print_str(buffer[0..buf_len]);
     serial.serial_clear_line();
 
     buf_pos = saved_pos;
     moveScreenCursor();
-    serial.serial_set_cursor(vga.zig_get_cursor_row(), vga.zig_get_cursor_col());
+
+    // Sync cursor
+    serial.serial_print_char('\r');
+    serial.serial_print_str("nova> ");
+    serial.serial_print_str(buffer[0..buf_pos]);
     serial.serial_show_cursor();
 
     // Update status indicators

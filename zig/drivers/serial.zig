@@ -57,28 +57,34 @@ pub fn serial_getchar() u8 {
 }
 
 pub fn serial_clear_screen() void {
+    if (!serial_exists) return;
     serial_print_str("\x1B[2J\x1B[H");
 }
 
 pub fn serial_clear_line() void {
+    if (!serial_exists) return;
     serial_print_str("\x1B[K");
 }
 
 pub fn serial_hide_cursor() void {
+    if (!serial_exists) return;
     serial_print_str("\x1B[?25l");
 }
 
 pub fn serial_show_cursor() void {
+    if (!serial_exists) return;
     serial_print_str("\x1B[?25h");
 }
 
 pub fn serial_set_cursor(row: u8, col: u8) void {
+    if (!serial_exists) return;
     var buf: [32]u8 = undefined;
     const str = common.fmt_to_buf(&buf, "\x1B[{d};{d}H", .{ @as(u32, row) + 1, @as(u32, col) + 1 });
     serial_print_str(str);
 }
 
 pub fn serial_set_color(fg: u8) void {
+    if (!serial_exists) return;
     // Basic ANSI colors (30-37)
     var buf: [16]u8 = undefined;
     const ansi_color = switch (fg & 0x07) {

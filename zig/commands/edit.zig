@@ -151,6 +151,7 @@ pub fn execute(name: []const u8) void {
         }
     }
     vga.restore_screen_buffer();
+    serial.serial_set_color(7); // Reset to white on exit
 }
 
 fn draw_ui() void {
@@ -173,7 +174,7 @@ fn draw_ui() void {
 
     // Serial UI sync
     serial.serial_set_cursor(0, 0);
-    serial.serial_set_color(0); // Black bg
+    serial.serial_set_color(7); // White fg
     serial.serial_print_str("NewOS Editor - ");
     serial.serial_print_str(filename[0..filename_len]);
     if (is_modified) serial.serial_print_str(" [*]");
