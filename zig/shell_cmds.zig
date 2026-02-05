@@ -394,6 +394,10 @@ pub export fn cmd_mkfs_fat16(drive_num_ptr: [*]const u8, drive_num_len: u32) voi
 
 /// Global initialization for Zig-based modules (FS, etc.)
 pub export fn zig_init() void {
+    // Initialize Serial first for logging and presence detection
+    const serial = @import("drivers/serial.zig");
+    serial.serial_init();
+
     common.fs_init();
     
     // Auto-select only Disk 1 (Slave) by default if formatted, 

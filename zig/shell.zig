@@ -85,7 +85,7 @@ pub export fn shell_clear_history() void {
 }
 
 // Command history state
-var history: [HISTORY_SIZE][1024]u8 = [_][1024]u8{[_]u8{0} ** 1024} ** HISTORY_SIZE;
+var history: [HISTORY_SIZE][256]u8 = [_][256]u8{[_]u8{0} ** 256} ** HISTORY_SIZE;
 var history_lens: [HISTORY_SIZE]u16 = [_]u16{0} ** HISTORY_SIZE;
 var history_count: u8 = 0;
 var history_index: u8 = 0;
@@ -236,7 +236,7 @@ fn save_history_to_disk() void {
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     
     if (fat.read_bpb(drive)) |bpb| {
-        var join_buf: [HISTORY_SIZE * 1024]u8 = [_]u8{0} ** (HISTORY_SIZE * 1024);
+        var join_buf: [HISTORY_SIZE * 256]u8 = [_]u8{0} ** (HISTORY_SIZE * 256);
         var offset: usize = 0;
         
         var i: u8 = 0;
@@ -259,7 +259,7 @@ fn load_history_from_disk() void {
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
 
     if (fat.read_bpb(drive)) |bpb| {
-        var load_buf: [HISTORY_SIZE * 1024]u8 = [_]u8{0} ** (HISTORY_SIZE * 1024);
+        var load_buf: [HISTORY_SIZE * 256]u8 = [_]u8{0} ** (HISTORY_SIZE * 256);
         const read = fat.read_file(drive, bpb, 0, ".HISTORY", &load_buf);
         if (read <= 0) return;
 
@@ -271,7 +271,7 @@ fn load_history_from_disk() void {
         while (i < total and history_count < HISTORY_SIZE) : (i += 1) {
             if (load_buf[i] == '\n') {
                 const len = i - start;
-                if (len > 0 and len < 1024) {
+                if (len > 0 and len < 256) {
                     for (0..len) |j| history[history_count][j] = load_buf[start + j];
                     history_lens[history_count] = @intCast(len);
                     history_count += 1;
@@ -334,7 +334,7 @@ fn refresh_line() void {
     serial.serial_print_char('\r');
     display_prompt_serial();
     serial.serial_print_str(cmd_buffer[0..cmd_len]);
-    serial.serial_clear_line();
+    serial.serial_print_str("\x1B[J"); // Clear to end of screen
 
     cmd_pos = saved_pos;
     move_screen_cursor();

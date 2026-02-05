@@ -16,7 +16,7 @@ pub var current_path: [256]u8 = [_]u8{0} ** 256;
 pub var current_path_len: usize = 0;
 
 pub var redirect_active: bool = false;
-pub var redirect_buffer: [32768]u8 = undefined;
+pub var redirect_buffer: [8192]u8 = undefined;
 pub var redirect_pos: usize = 0;
 
 /// Low-level character output

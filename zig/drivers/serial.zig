@@ -20,6 +20,8 @@ pub fn serial_init() void {
     outb(PORT + 3, 0x03);    // 8 bits, no parity, one stop bit
     outb(PORT + 2, 0xC7);    // Enable FIFO, clear them, with 14-byte threshold
     outb(PORT + 4, 0x0B);    // IRQs enabled, RTS/DSR set
+
+    serial_print_str("\x1B[0m"); // Reset attributes
 }
 
 pub export fn serial_print_char(c: u8) void {
