@@ -112,6 +112,7 @@ var auto_start_pos: u16 = 0;
 
 /// Read a command from input
 pub export fn read_command() void {
+    vga.reset_color();
     for (&cmd_buffer) |*c| c.* = 0;
     cmd_len = 0;
     cmd_pos = 0;
@@ -372,6 +373,7 @@ fn move_screen_cursor() void {
         new_row += 1;
     }
     vga.zig_set_cursor(@intCast(new_row), @intCast(new_col));
+    serial.serial_set_cursor(@intCast(new_row), @intCast(new_col));
 }
 
 fn clear_input_line() void {

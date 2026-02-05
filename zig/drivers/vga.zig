@@ -1,5 +1,5 @@
 // VGA Text Mode Driver - Safe Version
-const common = @import("../commands/common.zig");
+
 
 pub const VIDEO_MEMORY: [*]volatile u16 = @ptrFromInt(0xb8000);
 pub const MAX_COLS: usize = 80;
@@ -132,10 +132,6 @@ pub fn update_vga_cursor() void {
 
 pub export fn update_hardware_cursor() void {
     update_vga_cursor();
-    
-    // Also sync serial cursor
-    const serial = @import("serial.zig");
-    serial.serial_set_cursor(cursor_row, cursor_col);
 }
 
 fn outb(port: u16, val: u8) void {

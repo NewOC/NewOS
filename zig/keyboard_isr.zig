@@ -276,12 +276,20 @@ pub export fn keyboard_get_ctrl() bool { return ctrl_pressed; }
 
 // Wait for character (blocking)
 pub export fn keyboard_wait_char() u8 {
-    while (!keyboard_has_data()) {
-        // Ensure interrupts are enabled and wait
+    const serial = @import("drivers/serial.zig");
+    while (true) {
+        if (keyboard_has_data()) return keyboard_getchar();
+        
+        // Poll serial port as well
+        if (serial.serial_has_data()) {
+            serial_inject_char(serial.serial_getchar());
+            if (keyboard_has_data()) return keyboard_getchar();
+        }
+
+        // Ensure interrupts are enabled and wait briefly
         asm volatile ("sti");
         asm volatile ("hlt");
     }
-    return keyboard_getchar();
 }
 
 pub fn check_ctrl_c() bool {
