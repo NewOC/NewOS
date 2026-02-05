@@ -53,8 +53,8 @@ start:
     mov gs, ax
     mov ss, ax
     
-    ; 2. Setup Stack
-    mov esp, 0x90000
+    ; 2. Setup Stack (at 5MB, safe from kernel/BSS)
+    mov esp, 0x500000
     mov ebp, esp
 
     ; 3. Long jump to reload CS (Code Segment)

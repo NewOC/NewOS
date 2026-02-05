@@ -62,7 +62,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "history", .help = "Show command history list", .handler = cmd_handler_history },
     .{ .name = "echo", .help = "Print text to standard output", .handler = cmd_handler_echo },
     .{ .name = "time", .help = "Show full current RTC date and time", .handler = cmd_handler_time },
-    .{ .name = "mem", .help = "Show memory allocator & heap status", .handler = cmd_handler_mem },
+    .{ .name = "mem", .help = "Show memory & test demand paging (mem --test [MB])", .handler = cmd_handler_mem },
     .{ .name = "sysinfo", .help = "Display system hardware info", .handler = cmd_handler_sysinfo },
     .{ .name = "docs", .help = "Show internal documentation topics", .handler = cmd_handler_docs },
     .{ .name = "cp", .help = "cp <src> <dest> - Copy file/folder recursively", .handler = cmd_handler_cp },
@@ -1154,18 +1154,8 @@ fn cmd_handler_echo(args: []const u8) void {
     shell_cmds.cmd_echo(args.ptr, @intCast(args.len));
 }
 
-fn cmd_handler_mem(_: []const u8) void {
-    const memory_mod = @import("memory.zig");
-    common.printZ("Allocator Status:\n");
-    const ptr = memory_mod.heap.alloc(64);
-    if (ptr) |p| {
-        common.printZ("Test Alloc(64): Success 0x");
-        common.printNum(@intCast(@intFromPtr(p)));
-        common.printZ("\n");
-        memory_mod.heap.free(p);
-        memory_mod.heap.garbage_collect();
-        common.printZ("Memory test stable.\n");
-    } else { common.printZ("Allocation failed!\n"); }
+fn cmd_handler_mem(args: []const u8) void {
+    shell_cmds.cmd_mem(args.ptr, @intCast(args.len));
 }
 
 fn cmd_handler_time(_: []const u8) void {

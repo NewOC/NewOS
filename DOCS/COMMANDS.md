@@ -1,4 +1,4 @@
-# NewOS Commands Reference (v0.10)
+# NewOS Commands Reference (v0.18)
 
 Comprehensive documentation for all built-in NewOS shell commands.
 
@@ -9,6 +9,7 @@ Comprehensive documentation for all built-in NewOS shell commands.
 | Command | Description | Usage |
 |---------|-------------|-------|
 | `help` | Show command list | `help [page]` |
+| `docs` | Detailed documentation | `docs [topic]` |
 | `ls` | List files/folders | `ls [path]` |
 | `pwd` | Print working directory | `pwd` |
 | `cd` | Change directory | `cd <path>` |
@@ -21,9 +22,9 @@ Comprehensive documentation for all built-in NewOS shell commands.
 | `cp` | Copy file/folder | `cp <src> <dest>` |
 | `mv` | Move/Rename file/dir | `mv <src> <dest>` |
 | `tree` | Directory tree | `tree` |
-| `sysinfo` | System info | `sysinfo` |
+| `sysinfo` | System info & RAM detection | `sysinfo` |
 | `uptime` | System uptime | `uptime` |
-| `mem` | Memory status | `mem` |
+| `mem` | Memory status & Stress Tool | `mem [--test]` |
 | `nova` | Nova Interpreter | `nova` |
 | `reboot` | Restart system | `reboot` |
 | `shutdown` | Power off | `shutdown` |
@@ -35,7 +36,11 @@ Comprehensive documentation for all built-in NewOS shell commands.
 ### `help`
 Displays a list of available commands.
 - **Usage:** `help [page]`
-- **Note:** Use `help 2` to see the second page of commands.
+
+### `docs`
+Displays detailed help topics.
+- **Usage:** `docs [topic]`
+- **Topics:** `nova`, `memory`.
 
 ### `clear`
 Clears the console screen and resets the cursor position to the top-left.
@@ -46,8 +51,9 @@ Displays legal information, versioning details, and the creator credits.
 - **Usage:** `about`
 
 ### `sysinfo`
-Displays hardware information, CPU details, and OS build identity.
+Displays hardware information, CPU details, and **detected physical RAM**.
 - **Usage:** `sysinfo`
+- **Dynamic:** Reports exact memory provided by the BIOS (CMOS).
 
 ### `uptime`
 Shows how long the system has been running since the last boot.
@@ -171,7 +177,12 @@ Launches the Nova Scripting Interpreter for running scripts.
 
 ### `mem`
 Displays the current status of the System Heap and memory allocator.
-- **Usage:** `mem`
+- **Usage:** `mem [--test [MB]]`
+- **Features:**
+  - **Memory Test:** `mem --test 100` allocates and fills 100MB of RAM.
+  - **Performance:** Uses **PSE (4MB Huge Pages)** and **Pre-mapping** for maximum speed.
+  - **Interruptible:** Press **Ctrl+C** at any time to abort the test.
+  - **Garbage Collection:** Automatically triggers a heap cleanup after the test completes or is aborted.
 
 ### `history`
 Lists the most recently executed commands.

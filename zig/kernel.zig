@@ -46,6 +46,7 @@ export fn kmain() void {
     // 1. Initialize PMM & Heap
     memory.pmm.init();
     memory.heap.init();
+    memory.init_paging();
     
     // 2. Initialize timer and interrupt controllers
     // Initialize file system

@@ -1,6 +1,7 @@
 const vga = @import("drivers/vga.zig");
 const serial = @import("drivers/serial.zig");
 const config = @import("config.zig");
+const memory = @import("memory.zig");
 
 pub const ExceptionFrame = extern struct {
     edi: u32,
@@ -128,6 +129,12 @@ pub fn get_cpu_id() u8 {
     return 0;
 }
 
+fn get_ds() u32 { return asm volatile ("mov %%ds, %[ret]" : [ret] "=r" (-> u32)); }
+fn get_es() u32 { return asm volatile ("mov %%es, %[ret]" : [ret] "=r" (-> u32)); }
+fn get_fs() u32 { return asm volatile ("mov %%fs, %[ret]" : [ret] "=r" (-> u32)); }
+fn get_gs() u32 { return asm volatile ("mov %%gs, %[ret]" : [ret] "=r" (-> u32)); }
+fn get_ss() u32 { return asm volatile ("mov %%ss, %[ret]" : [ret] "=r" (-> u32)); }
+
 // --- Crash Suite Test Functions ---
 
 pub fn crash_abort() noreturn {
@@ -148,15 +155,9 @@ pub fn crash_stack_overflow() void {
 }
 
 pub fn crash_page_fault() void {
-    // If paging is off, #PF is impossible.
-    // We will trigger a #GP by accessing a non-existent segment or similar.
-    // Here we load a null selector into DS and try to access it.
-    asm volatile (
-        \\xor %%eax, %%eax
-        \\mov %%eax, %%ds
-        \\mov (%%eax), %%eax
-        ::: "eax"
-    );
+    // Accessing Poison Address (aligned to 4 bytes)
+    const ptr = @as(*volatile u32, @ptrFromInt(0xDEADC0D0));
+    _ = ptr.*;
 }
 
 pub fn crash_gpf() void {
@@ -164,7 +165,14 @@ pub fn crash_gpf() void {
     asm volatile ("mov %[val], %%ds" : : [val] "r" (@as(u32, 0x1234)));
 }
 
-export fn handle_exception(frame: *ExceptionFrame) noreturn {
+export fn handle_exception(frame: *ExceptionFrame) void {
+    if (frame.vector == 14) { // Page Fault
+        const fault_addr = get_cr2();
+        // Try to handle Page Fault via demand paging
+        if (memory.map_page(fault_addr)) {
+            return; // Successfully handled, retry instruction
+        }
+    }
     draw_rsod(frame, null, null);
 }
 
@@ -250,6 +258,13 @@ fn draw_rsod(frame: ?*const ExceptionFrame, saved_tss: ?*const TSS, msg: ?[]cons
     const cs  = if (frame) |f| f.cs  else if (saved_tss) |t| t.cs  else 0;
     const err = if (frame) |f| f.error_code else 0;
 
+    const ds = get_ds();
+    const es = get_es();
+    const fs = get_fs();
+    const gs = get_gs();
+    const ss = get_ss();
+    const eflags = if (frame) |f| f.eflags else (if (saved_tss) |t| t.eflags else 0);
+
     // Registers Row 1
     print_at(row, 2,  "EAX: ", bg_red); print_hex_at(row, 7,  eax, bg_red);
     print_at(row, 22, "EBX: ", bg_red); print_hex_at(row, 27, ebx, bg_red);
@@ -268,13 +283,24 @@ fn draw_rsod(frame: ?*const ExceptionFrame, saved_tss: ?*const TSS, msg: ?[]cons
     print_at(row, 2,  "EIP: ", bg_red); print_hex_at(row, 7,  eip, bg_red);
     print_at(row, 22, "CS : ", bg_red); print_hex_at(row, 27, cs,  bg_red);
     print_at(row, 42, "ERR: ", bg_red); print_hex_at(row, 47, err, bg_red);
-    row += 2;
+    print_at(row, 62, "FLG: ", bg_red); print_hex_at(row, 67, eflags, bg_red);
+    row += 1;
+
+    // Segment Registers Row
+    print_at(row, 2,  "DS : ", bg_red); print_hex_at(row, 7,  ds,  bg_red);
+    print_at(row, 22, "ES : ", bg_red); print_hex_at(row, 27, es,  bg_red);
+    print_at(row, 42, "FS : ", bg_red); print_hex_at(row, 47, fs,  bg_red);
+    print_at(row, 62, "GS : ", bg_red); print_hex_at(row, 67, gs,  bg_red);
+    row += 1;
+
+    print_at(row, 2,  "SS : ", bg_red); print_hex_at(row, 7,  ss,  bg_red);
+    row += 1;
 
     const cr2 = get_cr2();
     const cr3 = get_cr3();
     print_at(row, 2,  "CR2: ", bg_red); print_hex_at(row, 7,  cr2, bg_red);
     print_at(row, 22, "CR3: ", bg_red); print_hex_at(row, 27, cr3, bg_red);
-    print_at(row, 42, "CPU: 0", bg_red);
+    print_at(row, 42, "CPU: 00000000", bg_red);
     row += 2;
 
     if (esp != 0) {
@@ -283,7 +309,7 @@ fn draw_rsod(frame: ?*const ExceptionFrame, saved_tss: ?*const TSS, msg: ?[]cons
         var col: usize = 2;
         for (0..6) |i| {
             print_hex_at(row, col, stack_ptr[i], bg_red);
-            col += 13;
+            col += 14; // Added more space to avoid sticking
         }
         row += 2;
     }
@@ -300,10 +326,11 @@ fn draw_rsod(frame: ?*const ExceptionFrame, saved_tss: ?*const TSS, msg: ?[]cons
     if (msg) |m| {
         serial.serial_print_str("REASON: "); serial.serial_print_str(m); serial.serial_print_str("\r\n");
     }
-    serial.serial_print_str("EAX: "); serial_print_hex(eax); serial.serial_print_str("  EBX: "); serial_print_hex(ebx); serial.serial_print_str("  ECX: "); serial_print_hex(ecx); serial.serial_print_str("  EDX: "); serial_print_hex(edx); serial.serial_print_str("\r\n");
-    serial.serial_print_str("ESI: "); serial_print_hex(esi); serial.serial_print_str("  EDI: "); serial_print_hex(edi); serial.serial_print_str("  EBP: "); serial_print_hex(ebp); serial.serial_print_str("  ESP: "); serial_print_hex(esp); serial.serial_print_str("\r\n");
-    serial.serial_print_str("EIP: "); serial_print_hex(eip); serial.serial_print_str("  CS : "); serial_print_hex(cs);  serial.serial_print_str("  ERR: "); serial_print_hex(err); serial.serial_print_str("\r\n");
-    serial.serial_print_str("CR2: "); serial_print_hex(cr2); serial.serial_print_str("  CR3: "); serial_print_hex(cr3); serial.serial_print_str("  CPU: 0\r\n");
+    serial.serial_print_str("EAX: "); serial_print_hex(eax); serial.serial_print_str(" EBX: "); serial_print_hex(ebx); serial.serial_print_str(" ECX: "); serial_print_hex(ecx); serial.serial_print_str(" EDX: "); serial_print_hex(edx); serial.serial_print_str("\r\n");
+    serial.serial_print_str("ESI: "); serial_print_hex(esi); serial.serial_print_str(" EDI: "); serial_print_hex(edi); serial.serial_print_str(" EBP: "); serial_print_hex(ebp); serial.serial_print_str(" ESP: "); serial_print_hex(esp); serial.serial_print_str("\r\n");
+    serial.serial_print_str("EIP: "); serial_print_hex(eip); serial.serial_print_str(" CS : "); serial_print_hex(cs);  serial.serial_print_str(" ERR: "); serial_print_hex(err); serial.serial_print_str(" FLG: "); serial_print_hex(eflags); serial.serial_print_str("\r\n");
+    serial.serial_print_str("DS : "); serial_print_hex(ds);  serial.serial_print_str(" ES : "); serial_print_hex(es);  serial.serial_print_str(" FS : "); serial_print_hex(fs);  serial.serial_print_str(" GS : "); serial_print_hex(gs);  serial.serial_print_str("\r\n");
+    serial.serial_print_str("SS : "); serial_print_hex(ss);  serial.serial_print_str(" CR2: "); serial_print_hex(cr2); serial.serial_print_str(" CR3: "); serial_print_hex(cr3); serial.serial_print_str("\r\n");
     if (esp != 0) {
         serial.serial_print_str("STACK DUMP: ");
         const stack_ptr: [*]u32 = @ptrFromInt(esp);

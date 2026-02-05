@@ -14,10 +14,12 @@ const ata = @import("drivers/ata.zig");
 const edit = @import("commands/edit.zig");
 const rtc = @import("drivers/rtc.zig");
 const sysinfo = @import("commands/sysinfo.zig");
+const keyboard_isr = @import("keyboard_isr.zig");
 const file_utils = @import("commands/file_utils.zig");
 const docs = @import("commands/docs.zig");
 const config = @import("config.zig");
 const exceptions = @import("exceptions.zig");
+const memory = @import("memory.zig");
 
 extern fn shell_clear_history() void;
 
@@ -602,6 +604,90 @@ pub export fn cmd_edit(name_ptr: [*]const u8, name_len: u32) void {
         return;
     }
     edit.execute(argv[0]);
+}
+
+pub export fn cmd_mem(args_ptr: [*]const u8, args_len: u32) void {
+    var argv: [8][]const u8 = undefined;
+    const argc = common.parseArgs(args_ptr[0..args_len], &argv);
+    
+    if (argc > 0 and common.std_mem_eql(argv[0], "--test")) {
+        var mb_size: i32 = 40;
+        const max_mb = @as(i32, @intCast(memory.MAX_MEMORY / (1024 * 1024)));
+        const safe_limit = max_mb - 64; // Leave 64MB for system
+
+        if (argc > 1) {
+            if (common.parse_int(argv[1])) |val| {
+                if (val > 0 and val <= safe_limit) {
+                    mb_size = val;
+                } else if (val > safe_limit) {
+                    common.printZ("Error: Test size limited to ");
+                    common.printNum(safe_limit);
+                    common.printZ("MB (system RAM: ");
+                    common.printNum(max_mb);
+                    common.printZ("MB)\n");
+                    return;
+                }
+            }
+        }
+
+        common.printZ("Running Memory Test (");
+        common.printNum(mb_size);
+        common.printZ("MB allocation)...\n");
+        common.printZ("Press Ctrl+C to abort.\n");
+        const start_pf = memory.pf_count;
+        
+        const size = @as(usize, @intCast(mb_size)) * 1024 * 1024;
+        
+        if (memory.heap.alloc(size)) |ptr| {
+            common.printZ("Allocation successful at ");
+            common.printHex(@as(u32, @intCast(@intFromPtr(ptr))));
+            
+            common.printZ("\nPre-mapping memory (Zero CPU Exceptions)... ");
+            memory.map_range(@intFromPtr(ptr), size);
+            common.printZ("Done.\n");
+
+            common.printZ("Filling memory...\n");
+             
+             var aborted = false;
+             var i: usize = 0;
+             var check_counter: u32 = 0;
+             while (i < size) : (i += 4096) {
+                 // Check Ctrl+C every 1024 iterations (4MB) to improve performance
+                 check_counter += 1;
+                 if (check_counter >= 1024) {
+                     check_counter = 0;
+                     if (keyboard_isr.check_ctrl_c()) {
+                         common.printZ("\nAborted by user!\n");
+                         aborted = true;
+                         break;
+                     }
+                 }
+                 ptr[i] = @as(u8, @intCast(i % 255));
+             }
+             
+             if (!aborted) {
+                 // Final byte
+                 ptr[size - 1] = 0xAA;
+                 common.printZ("Memory fill complete.\n");
+             }
+
+             const end_pf = memory.pf_count;
+             common.printZ("Quiet Page Faults handled: ");
+             common.printNum(@intCast(end_pf - start_pf));
+             common.printZ("\n");
+             
+             // In NewOS, we often keep the allocation for testing or free it
+             // Let's at least trigger GC to show it works
+             memory.heap.free(ptr);
+             memory.heap.garbage_collect();
+        } else {
+             common.printZ("Error: Failed to allocate ");
+             common.printNum(mb_size);
+             common.printZ("MB.\n");
+        }
+    } else {
+        common.printZ("Usage: mem --test [MB]\n");
+    }
 }
 
 pub export fn cmd_sysinfo() void {

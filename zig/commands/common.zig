@@ -53,6 +53,17 @@ pub fn printNum(n: i32) void {
     print_char(@intCast(@as(u8, @intCast(@mod(n, 10))) + '0'));
 }
 
+/// Print a 32-bit hex value to the console
+pub fn printHex(val: u32) void {
+    printZ("0x");
+    var i: i8 = 7;
+    while (i >= 0) : (i -= 1) {
+        const nibble = @as(u8, @intCast((val >> @as(u5, @intCast(i * 4))) & 0xF));
+        const char = if (nibble < 10) '0' + nibble else 'A' + (nibble - 10);
+        print_char(char);
+    }
+}
+
 // --- File System Interface ---
 // Re-export core fs functions for easy access by shell commands
 pub const fs_init    = fs.fs_init;
@@ -315,4 +326,21 @@ fn fmtIntToBuf(buf: []u8, n_in: anytype) usize {
         }
     }
     return len + i;
+}
+
+pub fn parse_int(s: []const u8) ?i32 {
+    if (s.len == 0) return null;
+    var res: i32 = 0;
+    var i: usize = 0;
+    var sign: i32 = 1;
+    if (s[0] == '-') {
+        sign = -1;
+        i = 1;
+    }
+    if (i >= s.len) return null;
+    while (i < s.len) : (i += 1) {
+        if (s[i] < '0' or s[i] > '9') return null;
+        res = res * 10 + @as(i32, @intCast(s[i] - '0'));
+    }
+    return res * sign;
 }

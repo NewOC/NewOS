@@ -46,8 +46,8 @@ pub fn execute() void {
     vga.set_color(COLOR_LABEL, COLOR_BG);
     common.printZ("  RAM Total   : ");
     vga.set_color(COLOR_VALUE, COLOR_BG);
-    common.printNum(memory.MAX_MEMORY / (1024*1024));
-    common.printZ(" MB (Configured)\n");
+    common.printNum(@as(i32, @intCast(memory.DETECTED_MEMORY / (1024 * 1024))));
+    common.printZ(" MB (Detected)\n");
     
     // Disk
     vga.set_color(COLOR_LABEL, COLOR_BG);

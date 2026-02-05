@@ -37,39 +37,86 @@ pub fn execute(args: []const u8) void {
         return;
     }
 
-    vga.set_color(COLOR_HEADER, COLOR_BG);
-    common.printZ("=== NewOS Documentation ===\n\n");
+    if (common.std_mem_eql(args, "memory")) {
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("=== NewOS Memory Architecture ===\n\n");
+
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("[ Foundation ]\n");
+        vga.set_color(COLOR_TEXT, COLOR_BG);
+        print_doc("CMOS Detection", "Low-level BIOS detection for up to 4GB RAM.");
+        print_doc("PMM Bitmap", "Handles all 1,048,576 pages (128KB bitmap).");
+        print_doc("Kernel Guard", "First 8MB reserved for Code, Stack, and IDT.");
+
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("\n[ Paging & PSE ]\n");
+        vga.set_color(COLOR_TEXT, COLOR_BG);
+        print_doc("Huge Pages", "4MB Pages (PSE) for RAM. Reduces TLB misses.");
+        print_doc("Demand Paging", "Above 64MB, pages map only when accessed.");
+        print_doc("Pre-mapping", "map_range() for zero-fault bulk allocation.");
+
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("\n[ Testing & GC ]\n");
+        vga.set_color(COLOR_TEXT, COLOR_BG);
+        print_doc("mem --test [M]", "Stress test with pre-mapping & PF count.");
+        print_doc("Ctrl+C", "Interrupt long memory tests safely.");
+        print_doc("GC Tool", "coalesce() merges free blocks after tests.");
+        
+        vga.reset_color();
+        return;
+    }
+
+    const is_page1 = args.len == 0 or common.std_mem_eql(args, "1");
+    const is_page2 = common.std_mem_eql(args, "2");
+
+    if (is_page2) {
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("=== NewOS Documentation (Page 2/2) ===\n\n");
+
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("[ File System ]\n");
+        vga.set_color(COLOR_TEXT, COLOR_BG);
+        print_doc("ls", "List files in the current folder.");
+        print_doc("mount <id>", "Select active disk (0/1).");
+        print_doc("cp <src> <dst>", "Copy file or directory.");
+        print_doc("rm <file>", "Delete file permanently.");
+
+        vga.set_color(COLOR_HEADER, COLOR_BG);
+        common.printZ("\n[ Utilities ]\n");
+        vga.set_color(COLOR_TEXT, COLOR_BG);
+        print_doc("edit <path>", "Built-in text editor.");
+        print_doc("nova", "Nova Scripting Interpreter.");
+        print_doc("mem --test [M]", "Memory stress test tool.");
+
+        common.printZ("\nUse 'docs 1' to return. Tip: 'docs memory' for deep dive.\n");
+        vga.reset_color();
+        return;
+    }
+
+    // Default: Show Page 1 if nothing else matched
+    if (!is_page1) {
+        vga.set_color(12, COLOR_BG); // Red
+        common.printZ("Topic '");
+        common.printZ(args);
+        common.printZ("' not found. Showing Index:\n\n");
+    }
 
     vga.set_color(COLOR_HEADER, COLOR_BG);
-    common.printZ("[ System ]\n");
+    common.printZ("=== NewOS Documentation (Page 1/2) ===\n\n");
+
+    vga.set_color(COLOR_HEADER, COLOR_BG);
+    common.printZ("[ System & Info ]\n");
     vga.set_color(COLOR_TEXT, COLOR_BG);
-    print_doc("help", "Displays a brief list of all available commands.");
-    print_doc("docs", "Show this detailed documentation.");
-    print_doc("docs nova", "Show Nova language syntax and help.");
-    print_doc("sysinfo", "Shows OS version, CPU vendor, RAM, and disk sizes.");
-    print_doc("uptime", "Shows how long the system has been running.");
-    print_doc("reboot/shutdown", "Standard power management commands.");
+    print_doc("help", "Displays a brief list of all commands.");
+    print_doc("docs [n]", "Show this detailed documentation.");
+    print_doc("docs <topic>", "Specific help (nova, memory).");
+    print_doc("sysinfo", "Hardware, CPU, and RAM detection.");
+    print_doc("uptime", "System runtime and RTC stats.");
+    print_doc("reboot/shutdown", "Power management commands.");
 
-    vga.set_color(COLOR_HEADER, COLOR_BG);
-    common.printZ("\n[ File System ]\n");
-    vga.set_color(COLOR_TEXT, COLOR_BG);
-    print_doc("ls", "List files in the current directory.");
-    print_doc("mount <0/1>", "Selects the active disk (0=Master, 1=Slave).");
-    print_doc("cp <src> <dst>", "Copies a file from source to destination.");
-    print_doc("mv/ren <o> <n>", "Renames or moves a file.");
-    print_doc("rm <file>", "Deletes a file permanently.");
-    print_doc("format <id> --force", "Formats a disk. Drive 0 is system-protected.");
-
-    vga.set_color(COLOR_HEADER, COLOR_BG);
-    common.printZ("\n[ Utilities ]\n");
-    vga.set_color(COLOR_TEXT, COLOR_BG);
-    print_doc("edit <file>", "Simple text editor with save (F2) and exit (F10).");
-    print_doc("write <f> <t>", "Creates a file and writes the provided text to it.");
-    print_doc("cat <file>", "Displays the contents of a file on the screen.");
-    print_doc("nova", "Starts the Nova interpreted language shell.");
-
-    common.printZ("\nTip: Use 'docs <topic>' for specific help.\n");
+    common.printZ("\nUse 'docs 2' for File System & Utilities.\n");
     vga.reset_color();
+    return;
 }
 
 fn print_doc(cmd: []const u8, desc: []const u8) void {

@@ -71,7 +71,7 @@ init_pm:
     mov es, ax
     mov fs, ax
     mov gs, ax
-    mov ebp, 0x90000
+    mov ebp, 0x500000
     mov esp, ebp
     jmp KERNEL_OFFSET
 
