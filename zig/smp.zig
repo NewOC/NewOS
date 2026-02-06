@@ -1,277 +1,323 @@
 const acpi = @import("drivers/acpi.zig");
 const memory = @import("memory.zig");
 const common = @import("commands/common.zig");
+const scheduler = @import("scheduler.zig");
 
 const TRAMPOLINE_ADDR = 0x8000;
 const FLAG_ADDR = 0x9000;
 const MAILBOX_STACK = 0x7000;
 const MAILBOX_ENTRY = 0x7004;
-const MAILBOX_ID = 0x7008; // New: Mailbox for passing Core ID
+const MAILBOX_ID = 0x7008;
 
-pub const Task = struct {
-    func: *const fn (usize) void,
-    arg: usize,
-};
+// LAPIC Registers
+const LAPIC_TIMER = 0x320;
+const LAPIC_TDCR = 0x3E0;
+const LAPIC_TICR = 0x380;
+const LAPIC_TCCR = 0x390;
 
-pub const CoreData = struct {
-    lock: u32 = 0,
-    tasks: [32]?Task = [_]?Task{null} ** 32,
-    task_count: u32 = 0,
-    total_tasks: u32 = 0,
-    is_busy: bool = false,
-    id: u8 = 0,
-};
+extern fn switch_context(current: *usize, next: usize) void;
+extern fn start_task_asm(next: usize) noreturn;
+extern fn gdt_load() void;
+extern fn idt_load() void;
 
-pub var cores: [16]CoreData = [_]CoreData{.{}} ** 16;
-var print_lock: u32 = 0;
-pub var detected_map: [256]u8 = [_]u8{255} ** 256; // Maps LAPIC_ID -> Core Index
-pub var detected_cores: u32 = 1;
+pub fn enable_paging_ap() void {
+    const pd_addr = @intFromPtr(&memory.page_directory);
+    var dummy: u32 = undefined;
+    asm volatile (
+        \\mov %%cr4, %%eax
+        \\or $0x10, %%eax
+        \\mov %%eax, %%cr4
+        \\mov %[pd], %%cr3
+        \\mov %%cr0, %%eax
+        \\or $0x80000000, %%eax
+        \\mov %%eax, %%cr0
+        \\jmp 1f
+        \\1:
+        : [dummy] "={eax}" (dummy),
+        : [pd] "r" (pd_addr),
+        : "memory");
+}
 
+pub fn init_sse() void {
+    var dummy: u32 = undefined;
+    var d_ebx: u32 = undefined;
+    var d_ecx: u32 = undefined;
+    var d_edx: u32 = undefined;
+    asm volatile (
+        \\mov %%cr0, %%eax
+        \\and $0xFFFB, %%ax
+        \\or  $0x2, %%ax
+        \\mov %%eax, %%cr0
+        \\mov %%cr4, %%eax
+        \\or  $0x600, %%eax
+        \\mov %%eax, %%cr4
+        \\mov $1, %%eax
+        \\cpuid
+        \\bt $26, %%ecx
+        \\jnc 1f
+        \\mov %%cr4, %%eax
+        \\or $0x40000, %%eax
+        \\mov %%eax, %%cr4
+        \\bt $28, %%ecx
+        \\jnc 1f
+        \\xor %%ecx, %%ecx
+        \\xgetbv
+        \\or $7, %%eax
+        \\xsetbv
+        \\1:
+        : [dummy] "={eax}" (dummy),
+          [ebx] "={ebx}" (d_ebx),
+          [ecx] "={ecx}" (d_ecx),
+          [edx] "={edx}" (d_edx),
+        :
+        : "memory");
+}
+
+// Using scheduler.detected_cores instead
+pub const cores = &scheduler.cpcbs;
 const trampoline_bin = @embedFile("trampoline.bin");
-var ap_stacks: [16][8192]u8 align(4096) = undefined;
+var ap_stacks: [16][16384]u8 align(4096) = undefined;
+
+pub fn get_lapic_id() u8 {
+    var lapic = @as([*]volatile u32, @ptrFromInt(acpi.lapic_addr));
+    return @as(u8, @intCast(lapic[0x20 / 4] >> 24));
+}
 
 pub const CpuInfo = struct {
     vendor: [13]u8,
-    brand: [49]u8 align(4),
+    brand: [48]u8,
     family: u32,
     model: u32,
     stepping: u32,
 };
 
-fn spin_lock(lock: *volatile u32) void {
-    while (@atomicRmw(u32, lock, .Xchg, 1, .acquire) == 1) {
-        asm volatile ("pause");
-    }
+/// Initialize LAPIC Timer for the current core
+pub fn init_local_timer(quantum: u32) void {
+    var lapic = @as([*]volatile u32, @ptrFromInt(acpi.lapic_addr));
+
+    // 1. Set divisor to 16
+    lapic[LAPIC_TDCR / 4] = 0x03;
+
+    // 2. Set LVT Timer (Interrupt Vector 0x30, Periodic mode)
+    // Mode: Bits 17:18 (01 = Periodic)
+    // Vector: 0x30 (48)
+    lapic[LAPIC_TIMER / 4] = 0x00020030;
+
+    // 3. Set initial count
+    lapic[LAPIC_TICR / 4] = quantum;
+
+    // 4. Enable APIC globally (Spurious Interrupt Vector register)
+    // Vector 0xFF, Bit 8 = 1 (Enable)
+    lapic[0xF0 / 4] = 0x1FF;
 }
 
-fn spin_unlock(lock: *volatile u32) void {
-    @atomicStore(u32, lock, 0, .release);
-}
-
-pub fn lock_print() void {
-    spin_lock(&print_lock);
-}
-
-pub fn unlock_print() void {
-    spin_unlock(&print_lock);
-}
-
-/// Balancer: Pushes a task to the least loaded core (excluding Core 0 if requested)
-pub fn push_task(func: *const fn (usize) void, arg: usize) bool {
-    var best_core: u32 = 1; // Try to skip Core 0 for heavy tasks
-    var min_tasks: u32 = 999;
-
-    if (detected_cores < 2) best_core = 0; // Fallback to BSP
-
-    var i: u32 = if (detected_cores > 1) 1 else 0;
-    while (i < detected_cores) : (i += 1) {
-        if (cores[i].task_count < min_tasks) {
-            min_tasks = cores[i].task_count;
-            best_core = i;
-        }
-    }
-
-    const target = &cores[best_core];
-    spin_lock(&target.lock);
-    defer spin_unlock(&target.lock);
-
-    for (&target.tasks) |*slot| {
-        if (slot.* == null) {
-            slot.* = Task{ .func = func, .arg = arg };
-            target.task_count += 1;
-            return true;
-        }
-    }
-    return false;
-}
-
-fn pop_local_task(core_idx: u32) ?Task {
-    const core = &cores[core_idx];
-    if (core.task_count == 0) return null;
-
-    spin_lock(&core.lock);
-    defer spin_unlock(&core.lock);
-
-    for (&core.tasks) |*slot| {
-        if (slot.*) |t| {
-            slot.* = null;
-            core.task_count -= 1;
-            return t;
-        }
-    }
-    return null;
-}
-
-fn steal_task(my_idx: u32) ?Task {
-    var i: u32 = 0;
-    while (i < detected_cores) : (i += 1) {
-        if (i == my_idx) continue;
-        const target = &cores[i];
-
-        if (target.task_count > 0) {
-            spin_lock(&target.lock);
-            // Re-check after locking
-            if (target.task_count > 0) {
-                // Steal from the end of the queue
-                var j: usize = 31;
-                while (true) : (j -= 1) {
-                    if (target.tasks[j]) |t| {
-                        target.tasks[j] = null;
-                        target.task_count -= 1;
-                        spin_unlock(&target.lock);
-                        return t;
-                    }
-                    if (j == 0) break;
-                }
-            }
-            spin_unlock(&target.lock);
-        }
-    }
-    return null;
-}
-
+/// The main entry point for AP cores
 pub export fn ap_kernel_entry() noreturn {
-    // Get my core index from mailbox
-    const my_idx = @as(*volatile u32, @ptrFromInt(MAILBOX_ID)).*;
+    const core_id = @as(*volatile u32, @ptrFromInt(MAILBOX_ID)).*;
+    const cpu = &scheduler.cpcbs[core_id];
+
+    // 1. Hardware Initialization for this core
+    gdt_load();
+    idt_load();
+    enable_paging_ap();
+    init_sse();
+
+    // 2. Configure LAPIC timer for this core
+    const quantum: u32 = if (cpu.is_guardian) 1000000 else 10000000;
+    init_local_timer(quantum);
+
+    // 3. Signal BSP that we are READY
+    @as(*volatile u32, @ptrFromInt(FLAG_ADDR)).* = 1;
+
+    // 4. Enable interrupts and idle
+    asm volatile ("sti");
 
     while (true) {
-        if (pop_local_task(my_idx)) |task| {
-            cores[my_idx].is_busy = true;
-            task.func(task.arg);
-            cores[my_idx].is_busy = false;
-            cores[my_idx].total_tasks += 1;
-        } else if (steal_task(my_idx)) |task| {
-            lock_print();
-            common.printZ(" [SMP] Core ");
-            common.printNum(@intCast(my_idx));
-            common.printZ(" stole a task!\n");
-            unlock_print();
-
-            cores[my_idx].is_busy = true;
-            task.func(task.arg);
-            cores[my_idx].is_busy = false;
-            cores[my_idx].total_tasks += 1;
-        } else {
-            asm volatile ("pause");
-        }
+        asm volatile ("hlt");
     }
 }
 
-pub fn get_online_cores() u8 {
-    const flag_ptr = @as(*volatile u32, @ptrFromInt(FLAG_ADDR));
-    return @intCast(flag_ptr.* + 1);
+pub fn get_online_cores() u32 {
+    return scheduler.detected_cores;
+}
+
+pub fn push_task(func: *const fn (usize) callconv(.c) void, arg: usize) bool {
+    // Legacy support: push as a normal priority task (16)
+    _ = spawn("Task", 16, @intFromPtr(func), arg);
+    return true;
 }
 
 pub fn get_cpu_info() CpuInfo {
     var info: CpuInfo = undefined;
     var eax: u32 = 0;
-    var ebx: u32 = undefined;
-    var ecx: u32 = undefined;
-    var edx: u32 = undefined;
+    var ebx: u32 = 0;
+    var ecx: u32 = 0;
+    var edx: u32 = 0;
 
+    // 1. Vendor string (Standard EAX=0)
     asm volatile ("cpuid"
-        : [eax_out] "={eax}" (eax),
-          [ebx_out] "={ebx}" (ebx),
-          [ecx_out] "={ecx}" (ecx),
-          [edx_out] "={edx}" (edx),
-        : [eax_in] "{eax}" (eax),
+        : [eax] "={eax}" (eax),
+          [ebx] "={ebx}" (ebx),
+          [ecx] "={ecx}" (ecx),
+          [edx] "={edx}" (edx),
+        : [eax_in] "{eax}" (@as(u32, 0)),
     );
-
-    @memcpy(info.vendor[0..4], @as([*]const u8, @ptrCast(&ebx))[0..4]);
-    @memcpy(info.vendor[4..8], @as([*]const u8, @ptrCast(&edx))[0..4]);
-    @memcpy(info.vendor[8..12], @as([*]const u8, @ptrCast(&ecx))[0..4]);
+    @memcpy(info.vendor[0..4], @as(*[4]u8, @ptrCast(&ebx)));
+    @memcpy(info.vendor[4..8], @as(*[4]u8, @ptrCast(&edx)));
+    @memcpy(info.vendor[8..12], @as(*[4]u8, @ptrCast(&ecx)));
     info.vendor[12] = 0;
 
-    var eax2: u32 = 1;
-    var unused_ebx: u32 = undefined;
-    var unused_ecx: u32 = undefined;
-    var unused_edx: u32 = undefined;
+    // 2. Family, Model, Stepping (Standard EAX=1)
     asm volatile ("cpuid"
-        : [eax_out] "={eax}" (eax2),
-          [ebx_out] "={ebx}" (unused_ebx),
-          [ecx_out] "={ecx}" (unused_ecx),
-          [edx_out] "={edx}" (unused_edx),
-        : [eax_in] "{eax}" (eax2),
+        : [eax] "={eax}" (eax),
+          [ebx] "={ebx}" (ebx),
+          [ecx] "={ecx}" (ecx),
+          [edx] "={edx}" (edx),
+        : [eax_in] "{eax}" (@as(u32, 1)),
     );
-    info.stepping = eax2 & 0xF;
-    info.model = (eax2 >> 4) & 0xF;
-    info.family = (eax2 >> 8) & 0xF;
-    if (info.family == 15) info.family += (eax2 >> 20) & 0xFF;
-    if (info.family == 6 or info.family == 15) info.model += ((eax2 >> 16) & 0xF) << 4;
+    info.stepping = eax & 0xF;
+    info.model = (eax >> 4) & 0xF;
+    info.family = (eax >> 8) & 0xF;
+
+    // 3. Brand string (Extended EAX=0x80000000 check)
+    var dummy_ebx: u32 = undefined;
+    var dummy_ecx: u32 = undefined;
+    var dummy_edx: u32 = undefined;
+    asm volatile ("cpuid"
+        : [eax] "={eax}" (eax),
+          [ebx] "={ebx}" (dummy_ebx),
+          [ecx] "={ecx}" (dummy_ecx),
+          [edx] "={edx}" (dummy_edx),
+        : [eax_in] "{eax}" (@as(u32, 0x80000000)),
+    );
+
+    if (eax >= 0x80000004) {
+        var i: u32 = 0;
+        while (i < 3) : (i += 1) {
+            var beax: u32 = undefined;
+            var bebx: u32 = undefined;
+            var becx: u32 = undefined;
+            var bedx: u32 = undefined;
+            asm volatile ("cpuid"
+                : [eax] "={eax}" (beax),
+                  [ebx] "={ebx}" (bebx),
+                  [ecx] "={ecx}" (becx),
+                  [edx] "={edx}" (bedx),
+                : [eax_in] "{eax}" (@as(u32, 0x80000002 + i)),
+            );
+            @memcpy(info.brand[i * 16 + 0 .. i * 16 + 4], @as(*[4]u8, @ptrCast(&beax)));
+            @memcpy(info.brand[i * 16 + 4 .. i * 16 + 8], @as(*[4]u8, @ptrCast(&bebx)));
+            @memcpy(info.brand[i * 16 + 8 .. i * 16 + 12], @as(*[4]u8, @ptrCast(&becx)));
+            @memcpy(info.brand[i * 16 + 12 .. i * 16 + 16], @as(*[4]u8, @ptrCast(&bedx)));
+        }
+    } else {
+        const unknown = "Unknown CPU Model";
+        @memcpy(info.brand[0..unknown.len], unknown);
+        @memset(info.brand[unknown.len..48], ' ');
+    }
 
     return info;
 }
 
+pub fn run_task(core_id: u32, task: *scheduler.Task) void {
+    const cpu = &scheduler.cpcbs[core_id];
+    const prev_task = cpu.current_task;
+
+    cpu.current_task = task;
+    cpu.total_tasks += 1;
+    task.status = .Running;
+
+    if (prev_task) |prev| {
+        switch_context(&prev.context_ptr, task.context_ptr);
+    } else {
+        // First task on this core
+        start_task_asm(task.context_ptr);
+    }
+}
+
+pub fn spawn(name: []const u8, priority: u8, entry: usize, arg: usize) u32 {
+    const pid = scheduler.init_task(name, priority, entry, arg) orelse 0;
+    return pid;
+}
+
 pub fn init() void {
-    common.printZ("SMP: Initializing Balancing SMP...\n");
+    common.printZ("SMP: Initializing Guardian Real-Time Scheduler...\n");
 
     const tramp_ptr = @as([*]u8, @ptrFromInt(TRAMPOLINE_ADDR));
     @memcpy(tramp_ptr[0..trampoline_bin.len], trampoline_bin);
 
-    const flag_ptr = @as(*volatile u32, @ptrFromInt(FLAG_ADDR));
-    flag_ptr.* = 0;
+    @as(*volatile u32, @ptrFromInt(FLAG_ADDR)).* = 0;
+    @as(*volatile u32, @ptrFromInt(MAILBOX_ENTRY)).* = @intFromPtr(&ap_kernel_entry);
 
-    const mailbox_stack = @as(*volatile u32, @ptrFromInt(MAILBOX_STACK));
-    const mailbox_entry = @as(*volatile u32, @ptrFromInt(MAILBOX_ENTRY));
-    const mailbox_id = @as(*volatile u32, @ptrFromInt(MAILBOX_ID));
-    mailbox_entry.* = @intFromPtr(&ap_kernel_entry);
-
-    var lapic_base = acpi.lapic_addr;
-    if (lapic_base == 0) {
-        lapic_base = 0xFEE00000;
-        common.printZ("SMP: MADT not found, using default 0xFEE00000\n");
-        detected_cores = 1;
+    if (acpi.lapic_addr == 0) {
+        acpi.lapic_addr = 0xFEE00000;
+        scheduler.detected_cores = 1;
     } else {
-        detected_cores = acpi.madt_core_count;
+        scheduler.detected_cores = acpi.madt_core_count;
     }
 
-    if (!memory.map_page(lapic_base)) {
-        common.printZ("SMP: Failed to map LAPIC memory!\n");
-        return;
-    }
+    _ = memory.map_page(acpi.lapic_addr);
 
-    const lapic = @as([*]volatile u32, @ptrFromInt(lapic_base));
-    lapic[0x310 / 4] = 0;
-    lapic[0x300 / 4] = 0x000C4500;
-    common.sleep(10);
+    // Initial setup for BSP (Core 0)
+    const bsp_id = get_lapic_id();
+    scheduler.cpcbs[0] = .{ .id = 0, .lapic_id = bsp_id, .is_guardian = false };
+    init_local_timer(10000000); // 100ms quantum for BSP
 
     var ap_count: u32 = 0;
-    for (acpi.lapic_ids[0..acpi.madt_core_count]) |id| {
-        // Find BSP. For simplicity, we assume ID 0 is BSP.
-        // In a real OS we should use CPUID to get current LAPIC ID.
-        if (id == 0) {
-            cores[0].id = 0;
-            continue;
-        }
+    for (acpi.lapic_ids[0..scheduler.detected_cores]) |id| {
+        if (id == bsp_id) continue;
+        if (ap_count + 1 >= scheduler.MAX_CORES) break;
 
-        const stack_top = @intFromPtr(&ap_stacks[ap_count]) + 8192;
-        mailbox_stack.* = stack_top;
-        mailbox_id.* = ap_count + 1; // BSP is 0
+        const stack_top = @intFromPtr(&ap_stacks[ap_count]) + 16384;
+        @as(*volatile u32, @ptrFromInt(MAILBOX_STACK)).* = stack_top;
+        @as(*volatile u32, @ptrFromInt(MAILBOX_ID)).* = ap_count + 1;
 
-        const last_flag = flag_ptr.*;
+        scheduler.cpcbs[ap_count + 1] = .{
+            .id = ap_count + 1,
+            .lapic_id = id,
+            .is_guardian = (id == acpi.lapic_ids[acpi.madt_core_count - 1]), // Last core is Guardian
+        };
 
-        common.printZ("SMP: Booting Core Index ");
-        common.printNum(@intCast(ap_count + 1));
-        common.printZ(" (LAPIC ID ");
-        common.printNum(@intCast(id));
-        common.printZ(")...\n");
+        const flag_ptr = @as(*volatile u32, @ptrFromInt(FLAG_ADDR));
+        flag_ptr.* = 0; // Reset flag for this core
 
+        const lapic = @as([*]volatile u32, @ptrFromInt(acpi.lapic_addr));
         lapic[0x310 / 4] = @as(u32, id) << 24;
-        lapic[0x300 / 4] = 0x00004608;
+        lapic[0x300 / 4] = 0x00004608; // SIPI
 
+        // Wait for core to signal ready
         var timeout: u32 = 0;
-        while (flag_ptr.* == last_flag and timeout < 1000) : (timeout += 1) {
-            common.sleep(1);
+        while (flag_ptr.* == 0 and timeout < 1000000) : (timeout += 1) {
+            asm volatile ("pause");
         }
 
-        if (flag_ptr.* > last_flag) {
-            cores[ap_count + 1].id = id;
-            ap_count += 1;
+        ap_count += 1;
+    }
+
+    common.printZ("SMP: ");
+    common.printNum(@intCast(ap_count + 1));
+    common.printZ(" cores active. Guardian Core assigned.\n");
+}
+
+pub export fn isr_scheduler_entry(ctx_ptr: *usize) void {
+    var lapic = @as([*]volatile u32, @ptrFromInt(acpi.lapic_addr));
+    const lapic_id = get_lapic_id();
+
+    // Find our core_id
+    var core_id: u32 = 0xFFFFFFFF;
+    var i: u32 = 0;
+    while (i < scheduler.detected_cores) : (i += 1) {
+        if (scheduler.cpcbs[i].lapic_id == lapic_id) {
+            core_id = i;
+            break;
         }
     }
 
-    const online = get_online_cores();
-    common.printZ("SMP: Status: ");
-    common.printNum(@intCast(online));
-    common.printZ(" cores integrated.\n");
+    if (core_id == 0xFFFFFFFF) return; // Should not happen
+
+    // Send EOI to LAPIC IMMEDIATELY before switching
+    // This acknowledges the interrupt so the core can receive the next one
+    lapic[0xB0 / 4] = 0;
+
+    scheduler.scheduler_yield(core_id, ctx_ptr);
 }

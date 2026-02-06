@@ -6,7 +6,6 @@ const vga = @import("../drivers/vga.zig");
 const timer = @import("../drivers/timer.zig");
 const acpi = @import("../drivers/acpi.zig");
 
-
 const serial = @import("../drivers/serial.zig");
 
 // --- Global State ---
@@ -14,10 +13,42 @@ pub var selected_disk: i8 = -1; // -1 means RAM FS
 pub var current_dir_cluster: u32 = 0; // 0 = Root on FAT12/16
 pub var current_path: [256]u8 = [_]u8{0} ** 256;
 pub var current_path_len: usize = 0;
-
 pub var redirect_active: bool = false;
 pub var redirect_buffer: [32768]u8 = undefined;
 pub var redirect_pos: usize = 0;
+
+var global_print_lock: u32 = 0;
+
+pub fn irq_save() u32 {
+    var flags: u32 = undefined;
+    asm volatile (
+        \\pushfl
+        \\popl %[flags]
+        \\cli
+        : [flags] "=r" (flags),
+        :
+        : "memory");
+    return flags;
+}
+
+pub fn irq_restore(flags: u32) void {
+    asm volatile (
+        \\pushl %[flags]
+        \\popfl
+        :
+        : [flags] "r" (flags),
+        : "memory");
+}
+
+pub fn lock_print() void {
+    while (@atomicRmw(u32, &global_print_lock, .Xchg, 1, .acquire) == 1) {
+        asm volatile ("pause");
+    }
+}
+
+pub fn unlock_print() void {
+    @atomicStore(u32, &global_print_lock, 0, .release);
+}
 
 /// Low-level character output
 pub fn print_char(c: u8) void {
@@ -34,10 +65,14 @@ pub fn print_char(c: u8) void {
 
 /// Print a string slice to the console
 pub fn printZ(str: []const u8) void {
+    const flags = irq_save();
+    lock_print();
     for (str) |c| {
         if (c == 0) break;
         print_char(c);
     }
+    unlock_print();
+    irq_restore(flags);
 }
 
 /// Print a signed 32-bit integer to the console
@@ -66,15 +101,15 @@ pub fn printHex(val: u32) void {
 
 // --- File System Interface ---
 // Re-export core fs functions for easy access by shell commands
-pub const fs_init    = fs.fs_init;
-pub const fs_create  = fs.fs_create;
-pub const fs_delete  = fs.fs_delete;
-pub const fs_find    = fs.fs_find;
-pub const fs_list    = fs.fs_list;
+pub const fs_init = fs.fs_init;
+pub const fs_create = fs.fs_create;
+pub const fs_delete = fs.fs_delete;
+pub const fs_find = fs.fs_find;
+pub const fs_list = fs.fs_list;
 pub const fs_getname = fs.fs_getname;
-pub const fs_size    = fs.fs_size;
-pub const fs_read    = fs.fs_read;
-pub const fs_write   = fs.fs_write;
+pub const fs_size = fs.fs_size;
+pub const fs_read = fs.fs_read;
+pub const fs_write = fs.fs_write;
 
 // --- System Control (I/O Ports) ---
 
@@ -117,7 +152,7 @@ pub fn reboot() noreturn {
     printZ("Rebooting...\r\n");
     // Pulse CPU reset line (FE code to command port 64h)
     outb(0x64, 0xFE);
-    while(true) {}
+    while (true) {}
 }
 
 /// Shutdown the system using ACPI
@@ -135,8 +170,7 @@ var rnd_state: u32 = 0xACE1;
 pub fn seed_random_with_tsc() void {
     var low: u32 = undefined;
     var high: u32 = undefined;
-    asm volatile (
-        "rdtsc"
+    asm volatile ("rdtsc"
         : [low] "={eax}" (low),
           [high] "={edx}" (high),
     );
@@ -154,9 +188,15 @@ pub fn get_random(min_v: i32, max_v: i32) i32 {
     return @as(i32, @intCast(@mod(rnd_state, range))) + min_v;
 }
 
-pub fn math_abs(n: i32) i32 { return if (n < 0) -n else n; }
-pub fn math_max(a: i32, b: i32) i32 { return if (a > b) a else b; }
-pub fn math_min(a: i32, b: i32) i32 { return if (a < b) a else b; }
+pub fn math_abs(n: i32) i32 {
+    return if (n < 0) -n else n;
+}
+pub fn math_max(a: i32, b: i32) i32 {
+    return if (a > b) a else b;
+}
+pub fn math_min(a: i32, b: i32) i32 {
+    return if (a < b) a else b;
+}
 
 /// Check if two memory slices are equal
 pub fn std_mem_eql(a: []const u8, b: []const u8) bool {
@@ -184,7 +224,7 @@ pub fn startsWith(a: []const u8, b: []const u8) bool {
 
 pub fn endsWith(a: []const u8, b: []const u8) bool {
     if (a.len < b.len) return false;
-    return std_mem_eql(a[a.len - b.len..], b);
+    return std_mem_eql(a[a.len - b.len ..], b);
 }
 
 pub fn lastIndexOf(slice: []const u8, c: u8) ?usize {
@@ -300,13 +340,19 @@ pub fn fmt_to_buf(buf: []u8, comptime fmt: []const u8, args: anytype) []const u8
 fn fmtIntToBuf(buf: []u8, n_in: anytype) usize {
     var n: i32 = @intCast(n_in);
     if (n == 0) {
-        if (buf.len > 0) { buf[0] = '0'; return 1; }
+        if (buf.len > 0) {
+            buf[0] = '0';
+            return 1;
+        }
         return 0;
     }
-    
+
     var len: usize = 0;
     if (n < 0) {
-        if (buf.len > 0) { buf[0] = '-'; len = 1; }
+        if (buf.len > 0) {
+            buf[0] = '-';
+            len = 1;
+        }
         n = -n;
     }
 

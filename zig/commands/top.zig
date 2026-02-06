@@ -13,14 +13,14 @@ pub fn cmd_top() void {
 
         common.printZ("=== NewOS CPU Monitor (TOP) ===\n");
         common.printZ("Cores Online: ");
-        common.printNum(@intCast(smp.detected_cores));
+        common.printNum(@intCast(smp.get_online_cores()));
         common.printZ(" | Press 'q' to exit\n\n");
 
         common.printZ("Core | Status | Queue | Total Tasks | Load\n");
         common.printZ("-------------------------------------------\n");
 
         var i: u32 = 0;
-        while (i < smp.detected_cores) : (i += 1) {
+        while (i < smp.get_online_cores()) : (i += 1) {
             const core = &smp.cores[i];
 
             // Core ID
@@ -28,7 +28,7 @@ pub fn cmd_top() void {
             common.printZ("    | ");
 
             // Status
-            if (core.is_busy) {
+            if (core.current_task != null) {
                 common.printZ("BUSY  ");
             } else {
                 common.printZ("IDLE  ");
@@ -44,7 +44,7 @@ pub fn cmd_top() void {
             common.printZ("           | ");
 
             // Simple visual load bar
-            if (core.is_busy) {
+            if (core.current_task != null) {
                 common.printZ("[#####]");
             } else {
                 common.printZ("[     ]");

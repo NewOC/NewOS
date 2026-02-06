@@ -4,6 +4,8 @@
 [bits 32]
 
 global idt_init
+global idt_load
+global idt_descriptor
 global enable_interrupts
 global disable_interrupts
 global test_divide_by_zero
@@ -63,6 +65,11 @@ idt_init:
     mov ebx, 0x20
     call idt_set_gate
 
+    ; 5.5 Set Scheduler ISR (LAPIC Timer -> 0x30)
+    mov eax, isr_scheduler_wrapper
+    mov ebx, 0x30
+    call idt_set_gate
+
     ; 6. Set Keyboard ISR (IRQ1 -> 0x21)
     mov eax, isr_keyboard_wrapper
     mov ebx, 0x21
@@ -80,6 +87,11 @@ idt_init:
     out 0x21, al
 
     popa
+    ret
+
+; Load the IDT into the current core
+idt_load:
+    lidt [idt_descriptor]
     ret
 
 ; Helper: Set a single IDT gate
@@ -214,6 +226,9 @@ isr_keyboard_wrapper:
     popad
     iret
 
+    popad
+    iret
+
 ; ISR Wrapper: Timer (IRQ0)
 isr_timer_wrapper:
     pushad
@@ -226,6 +241,24 @@ isr_timer_wrapper:
     call isr_timer
     mov al, 0x20
     out 0x20, al
+    popad
+    iret
+
+extern isr_scheduler_entry
+; ISR Wrapper: Scheduler (LAPIC Timer -> 0x30)
+isr_scheduler_wrapper:
+    pushad                  ; Save EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI
+    
+    push esp                ; Pass &context_ptr (address of EDI) to Zig
+    
+    mov ax, 0x10            ; Data segment
+    mov ds, ax
+    mov es, ax
+    
+    call isr_scheduler_entry
+    
+    pop esp                 ; Switch to (potentially new) context pointer
+    
     popad
     iret
 

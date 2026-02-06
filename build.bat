@@ -22,6 +22,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Assemble Context Switcher
+echo Assembling Context Switcher...
+nasm -f elf32 zig\context.asm -o build\context.o
+if %errorlevel% neq 0 (
+    echo Error assembling Context Switcher!
+    pause
+    exit /b 1
+)
+
 :: Assemble SMP Trampoline
 echo Assembling SMP Trampoline...
 nasm -f bin zig\smp_trampoline.asm -o zig\trampoline.bin
@@ -45,7 +54,7 @@ popd
 
 :: Link kernel with Zig modules (strip during link)
 echo Linking...
-zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build\kernel32.elf build\kernel32.o zig\build\kernel.o
+zig ld.lld -m elf_i386 -T linker.ld --strip-all -o build\kernel32.elf build\kernel32.o build\context.o zig\build\kernel.o
 if %errorlevel% neq 0 (
     echo Error linking!
     pause

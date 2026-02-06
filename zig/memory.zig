@@ -2,6 +2,41 @@
 const common = @import("commands/common.zig");
 const config = @import("config.zig");
 
+// --- Standard C-like memory functions for freestanding ---
+pub export fn memcpy(dest: [*]u8, src: [*]const u8, n: usize) [*]u8 {
+    var i: usize = 0;
+    while (i < n) : (i += 1) dest[i] = src[i];
+    return dest;
+}
+
+pub export fn memset(dest: [*]u8, c: u8, n: usize) [*]u8 {
+    var i: usize = 0;
+    while (i < n) : (i += 1) dest[i] = c;
+    return dest;
+}
+
+pub export fn memmove(dest: [*]u8, src: [*]const u8, n: usize) [*]u8 {
+    if (@intFromPtr(dest) < @intFromPtr(src)) {
+        return memcpy(dest, src, n);
+    } else {
+        var i: usize = n;
+        while (i > 0) {
+            i -= 1;
+            dest[i] = src[i];
+        }
+        return dest;
+    }
+}
+
+pub export fn memcmp(s1: [*]const u8, s2: [*]const u8, n: usize) i32 {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        if (s1[i] < s2[i]) return -1;
+        if (s1[i] > s2[i]) return 1;
+    }
+    return 0;
+}
+
 pub const PAGE_SIZE = 4096;
 pub var MAX_MEMORY: usize = 128 * 1024 * 1024; // Default to 128MB, updated at boot
 pub var DETECTED_MEMORY: u64 = 128 * 1024 * 1024;
@@ -144,35 +179,20 @@ pub fn init_paging() void {
         \\mov %%eax, %%cr4
         ::: "eax");
 
-    // 3. Setup Page Directory Index 0-3 (0-16MB) using 4KB pages
-    // This is the CRITICAL zone: Kernel (1MB), Stack (5MB), IDT, early buffers.
-    // Using 4KB pages here is safer for these sensitive regions.
-    var pd_idx: u32 = 0;
-    while (pd_idx < 4) : (pd_idx += 1) {
-        if (create_page_table(pd_idx)) |pt| {
-            for (0..1024) |j| {
-                const addr = (pd_idx * 1024 * PAGE_SIZE) + (j * PAGE_SIZE);
-                if (addr == 0) {
-                    pt[j] = 0x0 | 0x2; // NULL protection
-                } else {
-                    pt[j] = @as(u32, @intCast(addr)) | 0x3; // Present, RW
-                }
-            }
-        }
-    }
-
-    // 4. Map RAM above 16MB using HUGE PAGES (4MB each)
-    const coverage = 1024 * PAGE_SIZE; // 4MB
+    // 3. Setup Page Directory Indices 0-1023 (Entire RAM)
+    const coverage = 4 * 1024 * 1024; // 4MB per entry with PSE
     const max_pd_idx = (MAX_MEMORY + coverage - 1) / coverage;
 
-    var i: u32 = 4; // Start from 16MB
+    var i: u32 = 0;
     while (i < 1024) : (i += 1) {
         if (i < max_pd_idx) {
             const addr = i * coverage;
-            // 16-64MB present, rest demand
+            // 0-64MB mandatory identity map (Kernel, Stacks, BSS, IDT)
+            // Using 4MB Huge Pages for everything initially for stability.
             if (addr < 64 * 1024 * 1024) {
                 page_directory[i] = addr | 0x83; // PS=1, RW=1, P=1
             } else {
+                // Above 64MB: Demand paging (Present=0)
                 page_directory[i] = addr | 0x82; // PS=1, RW=1, P=0
             }
         } else {

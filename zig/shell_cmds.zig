@@ -697,7 +697,7 @@ pub export fn cmd_cpuinfo() void {
     cpuinfo.execute();
 }
 
-fn test_task(arg: usize) void {
+pub export fn test_task(arg: usize) callconv(.c) void {
     common.printZ(" [TASK] Core reporting! Argument: ");
     common.printNum(@intCast(arg));
     common.printZ("\n");
@@ -712,20 +712,21 @@ pub export fn cmd_smp_test() void {
     _ = smp.push_task(test_task, 404);
 }
 
-fn heavy_task(id: usize) void {
-    var result: u64 = 0;
-    var i: u64 = 0;
-    const total: u64 = 200_000_000; // Heavier tasks for better demo
-
-    while (i < total) : (i += 1) {
-        result = result +% (i *% 3 +% 7);
+export fn heavy_task(id: usize) callconv(.c) void {
+    var i: u32 = 0;
+    var dummy_val: u32 = @intCast(id);
+    while (i < 50_000_000) : (i += 1) {
+        dummy_val = dummy_val +% (i ^ 0x55AA55AA);
+        asm volatile (""
+            : [val] "+r" (dummy_val),
+        );
     }
 
-    smp.lock_print();
+    common.lock_print();
     common.printZ(" [OK] Task #");
     common.printNum(@intCast(id));
     common.printZ(" done.\n");
-    smp.unlock_print();
+    common.unlock_print();
 }
 
 pub export fn cmd_stress_test() void {

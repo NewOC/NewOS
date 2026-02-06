@@ -24,6 +24,8 @@ extended_key    db 0
 ; Put entry point in .text.start section to ensure it's first
 section .text.start
 global start
+global gdt_descriptor_kernel
+global gdt_load
 
 ; External Zig / Linker symbols
 extern zig_init
@@ -113,6 +115,19 @@ actual_code:
     cli
     hlt
     jmp $
+
+; Load the GDT and reload segments
+gdt_load:
+    lgdt [gdt_descriptor_kernel]
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    jmp 0x08:.reload
+.reload:
+    ret
 
 ; Helper: Install TSS base addresses into GDT
 gdt_install_tss:
