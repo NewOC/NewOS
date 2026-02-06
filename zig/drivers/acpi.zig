@@ -10,6 +10,8 @@ var acpi_enable_val: u8 = 0;
 var slp_typa: u16 = 0;
 var slp_typb: u16 = 0;
 var slp_en: u16 = 0x2000;
+pub var lapic_addr: u32 = 0;
+pub var madt_core_count: u32 = 0;
 
 fn find_rsdp() ?usize {
     const signature = "RSD PTR ";
@@ -40,6 +42,8 @@ pub fn init() bool {
     const num_entries = (rsdt_length - 36) / 4;
     
     var i: u32 = 0;
+    var found_facp = false;
+
     while (i < num_entries) : (i += 1) {
         const table_addr = read_u32(rsdt_addr + 36 + (i * 4));
         if (check_signature_at(table_addr, "FACP")) {
@@ -65,10 +69,34 @@ pub fn init() bool {
                 slp_typb = 5 << 10;
             }
             
-            return true;
+            found_facp = true;
+        } else if (check_signature_at(table_addr, "APIC")) {
+             lapic_addr = read_u32(table_addr + 36);
+             parse_madt(table_addr);
         }
     }
-    return false;
+    return found_facp;
+}
+
+/// Parse MADT (Multiple APIC Description Table) to count cores
+fn parse_madt(madt_addr: usize) void {
+    const length = read_u32(madt_addr + 4);
+    var offset: usize = 44;
+    madt_core_count = 0;
+    
+    while (offset < length) {
+        const entry_type = read_u8(madt_addr + offset);
+        const entry_len = read_u8(madt_addr + offset + 1);
+        if (entry_len == 0) break; // Safety
+
+        if (entry_type == 0) { // Processor Local APIC
+            const flags = read_u32(madt_addr + offset + 4);
+            if ((flags & 1) != 0) { // Enabled
+                madt_core_count += 1;
+            }
+        }
+        offset += entry_len;
+    }
 }
 
 /// Simple AML parser to find \_S5_ (Shutdown) package

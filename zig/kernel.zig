@@ -11,7 +11,7 @@ const timer = @import("drivers/timer.zig");
 const acpi = @import("drivers/acpi.zig");
 const memory = @import("memory.zig");
 const exceptions = @import("exceptions.zig");
-
+const smp = @import("smp.zig");
 
 // Ensure all modules are included in the compilation
 comptime {
@@ -24,6 +24,7 @@ comptime {
     _ = acpi;
     _ = memory;
     _ = exceptions;
+    _ = smp;
     _ = @import("drivers/vga.zig");
 }
 
@@ -47,16 +48,19 @@ export fn kmain() void {
     memory.pmm.init();
     memory.heap.init();
     memory.init_paging();
-    
+
     // 2. Initialize timer and interrupt controllers
     // Initialize file system
     shell_cmds.zig_init();
-    
+
     // Initialize system timer
     timer.init();
-    
+
     // Initialize ACPI (for proper shutdown)
     _ = acpi.init();
+
+    // Initialize Dumb SMP (Kick Core 1)
+    smp.init();
 
     // Main Shell loop
     while (true) {

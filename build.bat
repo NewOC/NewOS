@@ -72,4 +72,4 @@ dir build\*.bin
 
 echo.
 echo Run: qemu-system-i386 -drive format=raw,file=build\os-image.bin -serial stdio
-pause
+:: pause

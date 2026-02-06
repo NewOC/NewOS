@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    
+
     // Build options
     const history_size = b.option(u32, "history_size", "Number of commands to keep in history");
     const options = b.addOptions();

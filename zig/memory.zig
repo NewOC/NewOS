@@ -58,8 +58,15 @@ pub fn set_page_busy(idx: u32) void {
 fn read_cmos(reg: u8) u8 {
     const addr = 0x70;
     const data = 0x71;
-    asm volatile ("outb %[val], %[port]" : : [val] "{al}" (reg), [port] "{dx}" (@as(u16, addr)));
-    return asm volatile ("inb %[port], %[ret]" : [ret] "={al}" (-> u8) : [port] "{dx}" (@as(u16, data)));
+    asm volatile ("outb %[val], %[port]"
+        :
+        : [val] "{al}" (reg),
+          [port] "{dx}" (@as(u16, addr)),
+    );
+    return asm volatile ("inb %[port], %[ret]"
+        : [ret] "={al}" (-> u8),
+        : [port] "{dx}" (@as(u16, data)),
+    );
 }
 
 fn detect_max_memory() void {
@@ -67,7 +74,7 @@ fn detect_max_memory() void {
     const base_low = read_cmos(0x30);
     const base_high = read_cmos(0x31);
     var base_kb = @as(u32, base_low) | (@as(u32, base_high) << 8);
-    
+
     // Cap base extension at 15MB (up to 16MB total) to avoid overlap with 0x34/35
     if (base_kb > 15360) base_kb = 15360;
 
@@ -78,7 +85,7 @@ fn detect_max_memory() void {
 
     // Total = 1MB (Standard) + Extension (1MB-16MB) + Extension (Above 16MB)
     const total_kb = 1024 + base_kb + (@as(u32, ext_64kb) * 64);
-    
+
     // 3. Read memory above 4GB (SeaBIOS specific)
     const hi_low = read_cmos(0x5B);
     const hi_mid = read_cmos(0x5C);
@@ -86,16 +93,16 @@ fn detect_max_memory() void {
     const hi_64kb = @as(u64, hi_low) | (@as(u64, hi_mid) << 8) | (@as(u64, hi_high) << 16);
 
     DETECTED_MEMORY = (@as(u64, total_kb) * 1024) + (hi_64kb * 65536);
-    
+
     // Safety cap at 4GB (bitmap limit)
     const max_32bit = 0xFFFFF000;
-    
+
     if (DETECTED_MEMORY >= 4096 * 1024 * 1024) {
         MAX_MEMORY = max_32bit;
     } else {
         MAX_MEMORY = @as(usize, @intCast(DETECTED_MEMORY));
     }
-    
+
     // Safety check: if CMOS reported too little or failed, fallback to 128MB.
     if (MAX_MEMORY < 16 * 1024 * 1024) {
         MAX_MEMORY = 128 * 1024 * 1024;
@@ -135,8 +142,7 @@ pub fn init_paging() void {
         \\mov %%cr4, %%eax
         \\or $0x00000010, %%eax
         \\mov %%eax, %%cr4
-        : : : "eax"
-    );
+        ::: "eax");
 
     // 3. Setup Page Directory Index 0-3 (0-16MB) using 4KB pages
     // This is the CRITICAL zone: Kernel (1MB), Stack (5MB), IDT, early buffers.
@@ -158,7 +164,7 @@ pub fn init_paging() void {
     // 4. Map RAM above 16MB using HUGE PAGES (4MB each)
     const coverage = 1024 * PAGE_SIZE; // 4MB
     const max_pd_idx = (MAX_MEMORY + coverage - 1) / coverage;
-    
+
     var i: u32 = 4; // Start from 16MB
     while (i < 1024) : (i += 1) {
         if (i < max_pd_idx) {
@@ -185,10 +191,9 @@ pub fn init_paging() void {
         \\mov %[cr0_val], %%cr0
         \\jmp 1f
         \\1:
-        : [cr0_val] "=&r" (cr0_val)
-        : [pd] "r" (pd_addr)
-        : "memory"
-    );
+        : [cr0_val] "=&r" (cr0_val),
+        : [pd] "r" (pd_addr),
+        : "memory");
 
     // 6. Restore Interrupts
     asm volatile ("sti");
@@ -213,7 +218,7 @@ fn create_page_table(pd_idx: u32) ?*PageTable {
     if (pmm.alloc_page()) |pt_addr| {
         const pt = @as(*PageTable, @ptrFromInt(pt_addr));
         for (pt) |*entry| entry.* = 0;
-        
+
         page_tables[pd_idx] = pt;
         page_directory[pd_idx] = @as(u32, @intCast(pt_addr)) | 0x3;
         return pt;
@@ -225,19 +230,22 @@ fn create_page_table(pd_idx: u32) ?*PageTable {
 pub fn map_page(vaddr: usize) bool {
     const pd_idx = vaddr >> 22;
     const pt_idx = (vaddr >> 12) & 0x3FF;
-    
+
     if (pd_idx >= 1024) return false;
-    
+
     // Address 0x0 and Poison addresses are protected
     if (vaddr < 4096) return false;
     if (vaddr >= 0xDEAD0000 and vaddr <= 0xDEADFFFF) return false;
-    
+
     // Check for HUGE PAGE (Bit 7)
     const pde = &page_directory[pd_idx];
     if ((pde.* & 0x80) != 0) {
         if ((pde.* & 1) == 0) {
             pde.* |= 1; // Mark Present
-            asm volatile ("invlpg (%[vaddr])" : : [vaddr] "r" (vaddr) : "memory");
+            asm volatile ("invlpg (%[vaddr])"
+                :
+                : [vaddr] "r" (vaddr),
+                : "memory");
             pf_count += 1;
         }
         return true;
@@ -245,11 +253,11 @@ pub fn map_page(vaddr: usize) bool {
 
     const pt = create_page_table(@as(u32, @intCast(pd_idx))) orelse return false;
     const pte = &pt[pt_idx];
-    
+
     // If not present
     if ((pte.* & 1) == 0) {
         var paddr: usize = 0;
-        
+
         if ((pte.* & 0xFFFFF000) != 0) {
             // Use pre-assigned physical address (for 32MB - RAM range)
             paddr = pte.* & 0xFFFFF000;
@@ -262,10 +270,13 @@ pub fn map_page(vaddr: usize) bool {
         if (paddr < MAX_MEMORY) {
             set_page_busy(@as(u32, @intCast(paddr / PAGE_SIZE)));
         }
-        
+
         pte.* = @as(u32, @intCast(paddr)) | 0x3; // P=1, RW=1
-        asm volatile ("invlpg (%[vaddr])" : : [vaddr] "r" (vaddr) : "memory");
-        
+        asm volatile ("invlpg (%[vaddr])"
+            :
+            : [vaddr] "r" (vaddr),
+            : "memory");
+
         pf_count += 1;
         return true;
     }
@@ -289,7 +300,6 @@ pub fn map_range(vaddr: usize, size: usize) void {
 }
 
 /// --- Linked List Heap Allocator ---
-
 const BlockHeader = struct {
     size: usize,
     is_free: bool,
@@ -345,19 +355,21 @@ pub const heap = struct {
                     .is_free = true,
                     .next = null,
                 };
-                
+
                 // Link to the end of the chain
                 var last = first_block;
                 if (last != null) {
-                    while (last.?.next) |n| { last = n; }
+                    while (last.?.next) |n| {
+                        last = n;
+                    }
                     last.?.next = new_block;
                 } else {
                     first_block = new_block;
                 }
-                
+
                 // Coalesce immediately to merge with previous block if contiguous
                 coalesce();
-                
+
                 // Continue loop to check if we now have enough space
             } else {
                 return null; // Out of memory
@@ -369,7 +381,7 @@ pub const heap = struct {
         const header_ptr = @intFromPtr(ptr) - @sizeOf(BlockHeader);
         const header = @as(*BlockHeader, @ptrFromInt(header_ptr));
         header.is_free = true;
-        
+
         // Simple immediate coalescing with next block
         coalesce();
     }
@@ -378,7 +390,7 @@ pub const heap = struct {
     /// Merges adjacent free blocks to prevent fragmentation
     pub fn garbage_collect() void {
         if (!config.USE_GARBAGE_COLLECTOR) return;
-        
+
         common.printZ("GC: Running memory cleanup...\n");
         coalesce();
     }

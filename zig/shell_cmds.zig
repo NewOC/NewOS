@@ -20,6 +20,7 @@ const docs = @import("commands/docs.zig");
 const config = @import("config.zig");
 const exceptions = @import("exceptions.zig");
 const memory = @import("memory.zig");
+const cpuinfo = @import("commands/cpuinfo.zig");
 
 extern fn shell_clear_history() void;
 
@@ -64,17 +65,16 @@ pub export fn cmd_mkfs(args_ptr: [*]const u8, args_len: u32) void {
     file_utils.cmd_mkfs(args_ptr[0..args_len]);
 }
 
-
 /// Execute 'ls' command
 pub export fn cmd_ls(args_ptr: [*]const u8, args_len: u32) void {
     const raw_args = args_ptr[0..args_len];
-    
+
     var argv: [8][]const u8 = undefined;
     const argc = common.parseArgs(raw_args, &argv);
-    
+
     var show_hidden = false;
     var path_arg: ?[]const u8 = null;
-    
+
     var i: usize = 0;
     while (i < argc) : (i += 1) {
         if (common.std_mem_eql(argv[i], "-a")) {
@@ -224,12 +224,12 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
             prefix = ".";
         } else if (common.endsWith(target, "/*")) {
             is_wildcard = true;
-            wildcard_dir_path = target[0..target.len - 2];
+            wildcard_dir_path = target[0 .. target.len - 2];
             if (wildcard_dir_path.len == 0) wildcard_dir_path = "/";
             prefix = "";
         } else if (common.endsWith(target, "/.*")) {
             is_wildcard = true;
-            wildcard_dir_path = target[0..target.len - 3];
+            wildcard_dir_path = target[0 .. target.len - 3];
             if (wildcard_dir_path.len == 0) wildcard_dir_path = "/";
             prefix = ".";
         }
@@ -244,7 +244,7 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
                 common.printZ(" --yes-i-am-sure\n");
                 return;
             }
-            
+
             if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], wildcard_dir_path)) |res| {
                 if (res.is_dir) {
                     fat.delete_all_in_directory(drive, bpb, res.cluster, recursive, delete_dirs, prefix);
@@ -263,13 +263,13 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
             // Handle single target (can be a path)
             var parent_cluster = common.current_dir_cluster;
             var final_name = target;
-            
+
             if (common.lastIndexOf(target, '/')) |idx| {
                 const parent_path = if (idx == 0) "/" else target[0..idx];
-                final_name = target[idx+1..];
+                final_name = target[idx + 1 ..];
                 if (final_name.len == 0) {
-                     common.printZ("Error: Invalid target name\n");
-                     return;
+                    common.printZ("Error: Invalid target name\n");
+                    return;
                 }
                 if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], parent_path)) |res| {
                     if (res.is_dir) {
@@ -304,7 +304,7 @@ pub export fn cmd_rm(args_ptr: [*]const u8, args_len: u32) void {
                         return;
                     }
                 }
-                
+
                 if (fat.delete_file(drive, bpb, parent_cluster, final_name)) {
                     common.printZ("Deleted: ");
                     common.printZ(target);
@@ -338,7 +338,7 @@ pub export fn cmd_uptime() void {
     common.printZ("System Ticks Uptime: ");
     common.printNum(@intCast(s));
     common.printZ(" seconds\n");
-    
+
     const dt = rtc.get_datetime();
     common.printZ("Current RTC Time: ");
     common.printNum(dt.hour);
@@ -395,12 +395,11 @@ pub export fn cmd_mkfs_fat16(drive_num_ptr: [*]const u8, drive_num_len: u32) voi
     disk_cmds.mkfs_fat16(@intCast(drive_num));
 }
 
-
 /// Global initialization for Zig-based modules (FS, etc.)
 pub export fn zig_init() void {
     common.fs_init();
-    
-    // Auto-select only Disk 1 (Slave) by default if formatted, 
+
+    // Auto-select only Disk 1 (Slave) by default if formatted,
     // leave Disk 0 (Master/System) unmounted for safety.
     if (fat.read_bpb(.Slave) != null) {
         common.selected_disk = 1;
@@ -413,26 +412,26 @@ pub export fn cmd_mount(disk_num_ptr: [*]const u8, disk_num_len: u32) void {
         common.printZ("Usage: mount <disk_num|ram>\n");
         return;
     }
-    
+
     const arg = disk_num_ptr[0..disk_num_len];
     if (common.std_mem_eql(arg, "ram")) {
         common.selected_disk = -1;
         common.printZ("Switched to RAM FS\n");
         return;
     }
-    
+
     const disk_num = disk_num_ptr[0] - '0';
     if (disk_num > 1) {
         common.printZ("Error: Invalid disk (0 or 1)\n");
         return;
     }
-    
+
     const drive = if (disk_num == 0) ata.Drive.Master else ata.Drive.Slave;
     if (fat.read_bpb(drive) == null) {
         common.printZ("Error: Disk not formatted\n");
         return;
     }
-    
+
     common.selected_disk = @intCast(disk_num);
     common.current_dir_cluster = 0; // Reset to Root
     common.current_path_len = 0;
@@ -467,10 +466,10 @@ pub export fn cmd_cd(args_ptr: [*]const u8, args_len: u32) void {
         common.printZ("Error: cd only supported on Disk FS\n");
         return;
     }
-    
+
     var argv: [8][]const u8 = undefined;
     const argc = common.parseArgs(args_ptr[0..args_len], &argv);
-    
+
     const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     const bpb = fat.read_bpb(drive) orelse {
         common.printZ("Error: Disk not formatted\n");
@@ -524,7 +523,7 @@ fn tree_node(drive: ata.Drive, bpb: fat.BPB, dir_cluster: u32, depth: usize) voi
     // We need a way to list directory but instead of printing, we recurse.
     // For now, let's just make it print with indentation if we had a way to iterate.
     // Let's add an iterator or just uses a simplified version.
-    
+
     var buffer: [512]u8 = undefined;
     if (dir_cluster == 0) {
         var sector = bpb.first_root_dir_sector;
@@ -555,7 +554,7 @@ fn tree_sector(drive: ata.Drive, bpb: fat.BPB, buffer: *[512]u8, depth: usize) b
         if (buffer[i] == 0xE5) continue;
         if (buffer[i + 11] == 0x0F) continue; // LFN
 
-        const name = fat.get_name_from_raw(buffer[i..i+32]);
+        const name = fat.get_name_from_raw(buffer[i .. i + 32]);
         if (common.std_mem_eql(name.buf[0..name.len], ".") or common.std_mem_eql(name.buf[0..name.len], "..")) continue;
 
         for (0..depth) |_| common.printZ("  ");
@@ -586,9 +585,8 @@ pub export fn cmd_write(name_ptr: [*]const u8, name_len: u32, data_ptr: [*]const
         if (fat.read_bpb(drive)) |bpb| {
             const name = name_ptr[0..name_len];
             const data = data_ptr[0..data_len];
-            const success = if (append) fat.append_to_file(drive, bpb, common.current_dir_cluster, name, data)
-                            else fat.write_file(drive, bpb, common.current_dir_cluster, name, data);
-            
+            const success = if (append) fat.append_to_file(drive, bpb, common.current_dir_cluster, name, data) else fat.write_file(drive, bpb, common.current_dir_cluster, name, data);
+
             if (!success) {
                 common.printZ("Error: Failed to write file to disk\n");
             }
@@ -609,7 +607,7 @@ pub export fn cmd_edit(name_ptr: [*]const u8, name_len: u32) void {
 pub export fn cmd_mem(args_ptr: [*]const u8, args_len: u32) void {
     var argv: [8][]const u8 = undefined;
     const argc = common.parseArgs(args_ptr[0..args_len], &argv);
-    
+
     if (argc > 0 and common.std_mem_eql(argv[0], "--test")) {
         var mb_size: i32 = 40;
         const max_mb = @as(i32, @intCast(memory.MAX_MEMORY / (1024 * 1024)));
@@ -635,55 +633,55 @@ pub export fn cmd_mem(args_ptr: [*]const u8, args_len: u32) void {
         common.printZ("MB allocation)...\n");
         common.printZ("Press Ctrl+C to abort.\n");
         const start_pf = memory.pf_count;
-        
+
         const size = @as(usize, @intCast(mb_size)) * 1024 * 1024;
-        
+
         if (memory.heap.alloc(size)) |ptr| {
             common.printZ("Allocation successful at ");
             common.printHex(@as(u32, @intCast(@intFromPtr(ptr))));
-            
+
             common.printZ("\nPre-mapping memory (Zero CPU Exceptions)... ");
             memory.map_range(@intFromPtr(ptr), size);
             common.printZ("Done.\n");
 
             common.printZ("Filling memory...\n");
-             
-             var aborted = false;
-             var i: usize = 0;
-             var check_counter: u32 = 0;
-             while (i < size) : (i += 4096) {
-                 // Check Ctrl+C every 1024 iterations (4MB) to improve performance
-                 check_counter += 1;
-                 if (check_counter >= 1024) {
-                     check_counter = 0;
-                     if (keyboard_isr.check_ctrl_c()) {
-                         common.printZ("\nAborted by user!\n");
-                         aborted = true;
-                         break;
-                     }
-                 }
-                 ptr[i] = @as(u8, @intCast(i % 255));
-             }
-             
-             if (!aborted) {
-                 // Final byte
-                 ptr[size - 1] = 0xAA;
-                 common.printZ("Memory fill complete.\n");
-             }
 
-             const end_pf = memory.pf_count;
-             common.printZ("Quiet Page Faults handled: ");
-             common.printNum(@intCast(end_pf - start_pf));
-             common.printZ("\n");
-             
-             // In NewOS, we often keep the allocation for testing or free it
-             // Let's at least trigger GC to show it works
-             memory.heap.free(ptr);
-             memory.heap.garbage_collect();
+            var aborted = false;
+            var i: usize = 0;
+            var check_counter: u32 = 0;
+            while (i < size) : (i += 4096) {
+                // Check Ctrl+C every 1024 iterations (4MB) to improve performance
+                check_counter += 1;
+                if (check_counter >= 1024) {
+                    check_counter = 0;
+                    if (keyboard_isr.check_ctrl_c()) {
+                        common.printZ("\nAborted by user!\n");
+                        aborted = true;
+                        break;
+                    }
+                }
+                ptr[i] = @as(u8, @intCast(i % 255));
+            }
+
+            if (!aborted) {
+                // Final byte
+                ptr[size - 1] = 0xAA;
+                common.printZ("Memory fill complete.\n");
+            }
+
+            const end_pf = memory.pf_count;
+            common.printZ("Quiet Page Faults handled: ");
+            common.printNum(@intCast(end_pf - start_pf));
+            common.printZ("\n");
+
+            // In NewOS, we often keep the allocation for testing or free it
+            // Let's at least trigger GC to show it works
+            memory.heap.free(ptr);
+            memory.heap.garbage_collect();
         } else {
-             common.printZ("Error: Failed to allocate ");
-             common.printNum(mb_size);
-             common.printZ("MB.\n");
+            common.printZ("Error: Failed to allocate ");
+            common.printNum(mb_size);
+            common.printZ("MB.\n");
         }
     } else {
         common.printZ("Usage: mem --test [MB]\n");
@@ -692,6 +690,10 @@ pub export fn cmd_mem(args_ptr: [*]const u8, args_len: u32) void {
 
 pub export fn cmd_sysinfo() void {
     sysinfo.execute();
+}
+
+pub export fn cmd_cpuinfo() void {
+    cpuinfo.execute();
 }
 
 extern fn test_divide_by_zero() void;
