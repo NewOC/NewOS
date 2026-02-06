@@ -12,6 +12,7 @@ const ata = @import("drivers/ata.zig");
 const config = @import("config.zig");
 const nova_interpreter = @import("nova/interpreter.zig");
 const nova_commands = @import("nova/commands.zig");
+const top_cmd = @import("commands/top.zig");
 
 // Embedded Nova Scripts
 const EmbeddedScript = struct {
@@ -40,6 +41,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "clear", .help = "Clear screen and reset console state", .handler = cmd_handler_clear },
     .{ .name = "about", .help = "Show legal information & credits", .handler = cmd_handler_about },
     .{ .name = "nova", .help = "Start Nova Scripting Interpreter", .handler = cmd_handler_nova },
+    .{ .name = "top", .help = "Real-time CPU and Task Monitor", .handler = cmd_handler_top },
     .{ .name = "uptime", .help = "Show system runtime and RTC time", .handler = cmd_handler_uptime },
     .{ .name = "reboot", .help = "Safely restart the system", .handler = cmd_handler_reboot },
     .{ .name = "shutdown", .help = "Safely turn off the system (ACPI)", .handler = cmd_handler_shutdown },
@@ -1203,6 +1205,10 @@ fn cmd_handler_mem(args: []const u8) void {
 
 fn cmd_handler_time(_: []const u8) void {
     shell_cmds.cmd_time();
+}
+
+fn cmd_handler_top(_: []const u8) void {
+    top_cmd.cmd_top();
 }
 
 fn cmd_handler_sysinfo(_: []const u8) void {

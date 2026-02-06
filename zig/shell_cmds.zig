@@ -715,49 +715,33 @@ pub export fn cmd_smp_test() void {
 fn heavy_task(id: usize) void {
     var result: u64 = 0;
     var i: u64 = 0;
-    const total: u64 = 500_000_000;
-
-    smp.lock_print();
-    common.printZ(" [CORE] Task #");
-    common.printNum(@intCast(id));
-    common.printZ(" started heavy math...\n");
-    smp.unlock_print();
+    const total: u64 = 200_000_000; // Heavier tasks for better demo
 
     while (i < total) : (i += 1) {
-        // Useless math that can't be fully optimized away easily
         result = result +% (i *% 3 +% 7);
-        if (i % (total / 5) == 0) {
-            smp.lock_print();
-            common.printZ(" [CORE] Task #");
-            common.printNum(@intCast(id));
-            common.printZ(" working... (");
-            common.printNum(@intCast((i * 100) / total));
-            common.printZ("%)\n");
-            smp.unlock_print();
-        }
     }
 
     smp.lock_print();
-    common.printZ(" [CORE] Task #");
+    common.printZ(" [OK] Task #");
     common.printNum(@intCast(id));
-    common.printZ(" FINISHED. Junk result: ");
-    common.printHex(@intCast(result & 0xFFFFFFFF));
-    common.printZ("\n");
+    common.printZ(" done.\n");
     smp.unlock_print();
 }
 
 pub export fn cmd_stress_test() void {
     if (!config.ENABLE_DEBUG_COMMANDS) return;
     if (smp.get_online_cores() < 2) {
-        common.printZ("Error: No secondary cores online for stress test.\n");
+        common.printZ("Error: No secondary cores online.\n");
         return;
     }
 
-    common.printZ("Deploying 3 heavy tasks to AP cores...\n");
-    _ = smp.push_task(heavy_task, 1);
-    _ = smp.push_task(heavy_task, 2);
-    _ = smp.push_task(heavy_task, 3);
-    common.printZ("Tasks deployed. BSP (Core 0) remains free.\n");
+    common.printZ("Flood: Sending 100 tasks to the balancer...\n");
+    var tasks_sent: u32 = 0;
+    while (tasks_sent < 100) : (tasks_sent += 1) {
+        _ = smp.push_task(heavy_task, tasks_sent);
+    }
+
+    common.printZ("All tasks deployed. Use 'top' to monitor CPU load!\n");
 }
 
 extern fn test_divide_by_zero() void;

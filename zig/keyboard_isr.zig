@@ -27,19 +27,18 @@ pub const KEY_ESC = 27;
 
 // Scancode tables
 const scancode = [_]u8{
-    0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8,   // 0x00-0x0E
-    9, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 10,    // 0x0F-0x1C
-    0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',       // 0x1D-0x29 (0x1D is Ctrl)
-    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,         // 0x2A-0x36 (0x2A is LShift, 0x36 is RShift)
-    '*', 0, ' ',                                                         // 0x37-0x39 (0x37 is *, 0x38 is Alt)
+    0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8, // 0x00-0x0E
+    9, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 10, // 0x0F-0x1C
+    0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', // 0x1D-0x29 (0x1D is Ctrl)
+    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, // 0x2A-0x36 (0x2A is LShift, 0x36 is RShift)
+    '*', 0, ' ', // 0x37-0x39 (0x37 is *, 0x38 is Alt)
 } ++ [_]u8{0} ** (128 - 58);
 
 const scancode_shift = [_]u8{
-    0, 27, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 8,
-    0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 10,
-    0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-    0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,
-    '*', 0, ' ',
+    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 8,
+    0,   'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 10,  0,
+    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0,   '|', 'Z',
+    'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*', 0,   ' ',
 } ++ [_]u8{0} ** (128 - 58);
 
 // Keyboard state
@@ -60,7 +59,7 @@ fn inb(port: u16) u8 {
 // Keyboard interrupt handler (called from ASM wrapper)
 pub export fn isr_keyboard() void {
     const scancode_byte = inb(0x60);
-    
+
     // Handle extended keys prefix
     if (scancode_byte == 0xE0) {
         extended_key = true;
@@ -86,13 +85,13 @@ pub export fn isr_keyboard() void {
         ctrl_pressed = false;
         return;
     }
-    
+
     // Ignore key releases (high bit set)
     if ((scancode_byte & 0x80) != 0) {
         extended_key = false; // Reset extended key on release too
         return;
     }
-    
+
     var ascii: u8 = 0;
 
     if (extended_key) {
@@ -124,11 +123,19 @@ pub export fn isr_keyboard() void {
             // Handle Numpad codes (0x47 to 0x53)
             if (num_lock) {
                 ascii = switch (scancode_byte) {
-                    0x47 => '7', 0x48 => '8', 0x49 => '9',
-                    0x4B => '4', 0x4C => '5', 0x4D => '6',
-                    0x4F => '1', 0x50 => '2', 0x51 => '3',
-                    0x52 => '0', 0x53 => '.',
-                    0x4A => '-', 0x4E => '+',
+                    0x47 => '7',
+                    0x48 => '8',
+                    0x49 => '9',
+                    0x4B => '4',
+                    0x4C => '5',
+                    0x4D => '6',
+                    0x4F => '1',
+                    0x50 => '2',
+                    0x51 => '3',
+                    0x52 => '0',
+                    0x53 => '.',
+                    0x4A => '-',
+                    0x4E => '+',
                     else => 0,
                 };
             } else {
@@ -180,7 +187,7 @@ pub export fn isr_keyboard() void {
             }
         }
     }
-    
+
     // Add to buffer if valid character
     if (ascii != 0) {
         inject_into_buffer(ascii);
@@ -214,9 +221,18 @@ pub fn serial_inject_char(c: u8) void {
             'D' => ascii = KEY_LEFT,
             'H' => ascii = KEY_HOME,
             'F' => ascii = KEY_END,
-            '3' => { serial_esc_state = 3; return; },
-            '1' => { serial_esc_state = 4; return; },
-            '4' => { serial_esc_state = 5; return; },
+            '3' => {
+                serial_esc_state = 3;
+                return;
+            },
+            '1' => {
+                serial_esc_state = 4;
+                return;
+            },
+            '4' => {
+                serial_esc_state = 5;
+                return;
+            },
             else => {
                 inject_into_buffer(27);
                 inject_into_buffer('[');
@@ -251,13 +267,13 @@ fn inject_into_buffer(ascii: u8) void {
 }
 
 // Get character from buffer (non-blocking)
-export fn keyboard_getchar() u8 {
+pub export fn keyboard_getchar() u8 {
     const head = @as(*volatile usize, &buffer_head).*;
     const tail_ptr = @as(*volatile usize, &buffer_tail);
     if (tail_ptr.* == head) {
         return 0; // Buffer empty
     }
-    
+
     const ch = keyboard_buffer[tail_ptr.*];
     tail_ptr.* = (tail_ptr.* + 1) % BUFFER_SIZE;
     return ch;
@@ -270,16 +286,22 @@ pub export fn keyboard_has_data() bool {
     return tail != head;
 }
 
-pub export fn keyboard_get_caps_lock() bool { return caps_lock; }
-pub export fn keyboard_get_num_lock() bool { return num_lock; }
-pub export fn keyboard_get_ctrl() bool { return ctrl_pressed; }
+pub export fn keyboard_get_caps_lock() bool {
+    return caps_lock;
+}
+pub export fn keyboard_get_num_lock() bool {
+    return num_lock;
+}
+pub export fn keyboard_get_ctrl() bool {
+    return ctrl_pressed;
+}
 
 // Wait for character (blocking)
 pub export fn keyboard_wait_char() u8 {
     const serial = @import("drivers/serial.zig");
     while (true) {
         if (keyboard_has_data()) return keyboard_getchar();
-        
+
         // Poll serial port as well
         if (serial.serial_has_data()) {
             serial_inject_char(serial.serial_getchar());
@@ -295,7 +317,7 @@ pub export fn keyboard_wait_char() u8 {
 pub fn check_ctrl_c() bool {
     if (keyboard_has_data()) {
         if (keyboard_buffer[buffer_tail] == 3) {
-            _ = keyboard_getchar(); 
+            _ = keyboard_getchar();
             return true;
         }
     }
