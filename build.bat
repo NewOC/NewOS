@@ -22,6 +22,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Assemble SMP Trampoline
+echo Assembling SMP Trampoline...
+nasm -f bin zig\smp_trampoline.asm -o zig\trampoline.bin
+if %errorlevel% neq 0 (
+    echo Error assembling SMP trampoline!
+    pause
+    exit /b 1
+)
+
 :: Build Zig modules
 echo Building Zig modules...
 pushd zig
@@ -72,4 +81,3 @@ dir build\*.bin
 
 echo.
 echo Run: qemu-system-i386 -drive format=raw,file=build\os-image.bin -serial stdio
-:: pause

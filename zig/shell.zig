@@ -80,6 +80,9 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "stack_overflow", .help = "Trigger a Double Fault via stack overflow", .handler = cmd_handler_stack_overflow },
     .{ .name = "page_fault", .help = "Trigger a Page Fault exception", .handler = cmd_handler_page_fault },
     .{ .name = "gpf", .help = "Trigger a General Protection Fault", .handler = cmd_handler_gpf },
+} else [_]Command{}) ++ (if (config.ENABLE_DEBUG_COMMANDS) [_]Command{
+    .{ .name = "smp-test", .help = "Test global task queue across cores", .handler = cmd_handler_smp_test },
+    .{ .name = "stress-test", .help = "Run heavy math on AP cores while BSP stays free", .handler = cmd_handler_stress_test },
 } else [_]Command{});
 
 // Local command buffer
@@ -1208,6 +1211,14 @@ fn cmd_handler_sysinfo(_: []const u8) void {
 
 fn cmd_handler_cpuinfo(_: []const u8) void {
     shell_cmds.cmd_cpuinfo();
+}
+
+fn cmd_handler_smp_test(_: []const u8) void {
+    shell_cmds.cmd_smp_test();
+}
+
+fn cmd_handler_stress_test(_: []const u8) void {
+    shell_cmds.cmd_stress_test();
 }
 
 fn cmd_handler_panic(_: []const u8) void {

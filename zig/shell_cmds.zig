@@ -21,6 +21,7 @@ const config = @import("config.zig");
 const exceptions = @import("exceptions.zig");
 const memory = @import("memory.zig");
 const cpuinfo = @import("commands/cpuinfo.zig");
+const smp = @import("smp.zig");
 
 extern fn shell_clear_history() void;
 
@@ -694,6 +695,69 @@ pub export fn cmd_sysinfo() void {
 
 pub export fn cmd_cpuinfo() void {
     cpuinfo.execute();
+}
+
+fn test_task(arg: usize) void {
+    common.printZ(" [TASK] Core reporting! Argument: ");
+    common.printNum(@intCast(arg));
+    common.printZ("\n");
+}
+
+pub export fn cmd_smp_test() void {
+    if (!config.ENABLE_DEBUG_COMMANDS) return;
+    common.printZ("Sending 4 tasks to the global queue...\n");
+    _ = smp.push_task(test_task, 101);
+    _ = smp.push_task(test_task, 202);
+    _ = smp.push_task(test_task, 303);
+    _ = smp.push_task(test_task, 404);
+}
+
+fn heavy_task(id: usize) void {
+    var result: u64 = 0;
+    var i: u64 = 0;
+    const total: u64 = 500_000_000;
+
+    smp.lock_print();
+    common.printZ(" [CORE] Task #");
+    common.printNum(@intCast(id));
+    common.printZ(" started heavy math...\n");
+    smp.unlock_print();
+
+    while (i < total) : (i += 1) {
+        // Useless math that can't be fully optimized away easily
+        result = result +% (i *% 3 +% 7);
+        if (i % (total / 5) == 0) {
+            smp.lock_print();
+            common.printZ(" [CORE] Task #");
+            common.printNum(@intCast(id));
+            common.printZ(" working... (");
+            common.printNum(@intCast((i * 100) / total));
+            common.printZ("%)\n");
+            smp.unlock_print();
+        }
+    }
+
+    smp.lock_print();
+    common.printZ(" [CORE] Task #");
+    common.printNum(@intCast(id));
+    common.printZ(" FINISHED. Junk result: ");
+    common.printHex(@intCast(result & 0xFFFFFFFF));
+    common.printZ("\n");
+    smp.unlock_print();
+}
+
+pub export fn cmd_stress_test() void {
+    if (!config.ENABLE_DEBUG_COMMANDS) return;
+    if (smp.get_online_cores() < 2) {
+        common.printZ("Error: No secondary cores online for stress test.\n");
+        return;
+    }
+
+    common.printZ("Deploying 3 heavy tasks to AP cores...\n");
+    _ = smp.push_task(heavy_task, 1);
+    _ = smp.push_task(heavy_task, 2);
+    _ = smp.push_task(heavy_task, 3);
+    common.printZ("Tasks deployed. BSP (Core 0) remains free.\n");
 }
 
 extern fn test_divide_by_zero() void;
