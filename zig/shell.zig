@@ -1,4 +1,4 @@
-// NewOS Shell - Main command line interface
+// NovumOS Shell - Main command line interface
 const common = @import("commands/common.zig");
 const keyboard = @import("keyboard_isr.zig");
 const shell_cmds = @import("shell_cmds.zig");
@@ -12,6 +12,7 @@ const ata = @import("drivers/ata.zig");
 const config = @import("config.zig");
 const nova_interpreter = @import("nova/interpreter.zig");
 const nova_vm = @import("vm.zig");
+const top_cmd = @import("commands/top.zig");
 
 // Embedded Nova Scripts
 const EmbeddedScript = struct {
@@ -37,13 +38,18 @@ const Command = struct {
 
 const SHELL_COMMANDS = [_]Command{
     .{ .name = "help", .help = "Show this help message (Tip: help 2)", .handler = cmd_handler_help },
+    .{ .name = "?", .help = "Alias for help", .handler = cmd_handler_help },
     .{ .name = "clear", .help = "Clear screen and reset console state", .handler = cmd_handler_clear },
+    .{ .name = "cls", .help = "Alias for clear", .handler = cmd_handler_clear },
     .{ .name = "about", .help = "Show legal information & credits", .handler = cmd_handler_about },
     .{ .name = "nova", .help = "Start Nova Scripting Interpreter", .handler = cmd_handler_nova },
+    .{ .name = "top", .help = "Real-time CPU and Task Monitor", .handler = cmd_handler_top },
     .{ .name = "uptime", .help = "Show system runtime and RTC time", .handler = cmd_handler_uptime },
     .{ .name = "reboot", .help = "Safely restart the system", .handler = cmd_handler_reboot },
     .{ .name = "shutdown", .help = "Safely turn off the system (ACPI)", .handler = cmd_handler_shutdown },
     .{ .name = "ls", .help = "List files/folders in current directory", .handler = cmd_handler_ls },
+    .{ .name = "hexdump", .help = "hexdump <f> - Display file content in hex/ASCII", .handler = cmd_handler_hexdump },
+    .{ .name = "more", .help = "more <f> - Display file content with paging", .handler = cmd_handler_more },
     .{ .name = "la", .help = "List all files (including hidden)", .handler = cmd_handler_la },
     .{ .name = "lsdsk", .help = "List storage devices and partitions", .handler = cmd_handler_lsdsk },
     .{ .name = "mount", .help = "mount <0|1> - Select active drive", .handler = cmd_handler_mount },
@@ -54,6 +60,7 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "tree", .help = "Display recursive directory structure", .handler = cmd_handler_tree },
     .{ .name = "mkfs-fat12", .help = "Format drive as FAT12 (legacy)", .handler = cmd_handler_mkfs12 },
     .{ .name = "mkfs-fat16", .help = "Format drive as FAT16 (standard)", .handler = cmd_handler_mkfs16 },
+    .{ .name = "mkfs-fat32", .help = "Format drive as FAT32 (advanced)", .handler = cmd_handler_mkfs32 },
     .{ .name = "touch", .help = "Create an empty file", .handler = cmd_handler_touch },
     .{ .name = "write", .help = "write [-a] <f> <t> - Write string to file (-a to append)", .handler = cmd_handler_write },
     .{ .name = "rm", .help = "rm [-d] [-r] <f|*> - Delete file/dir", .handler = cmd_handler_rm },
@@ -67,6 +74,8 @@ const SHELL_COMMANDS = [_]Command{
     .{ .name = "cpuinfo", .help = "Show detailed CPU vendor, brand and features", .handler = cmd_handler_cpuinfo },
     .{ .name = "docs", .help = "Show internal documentation topics", .handler = cmd_handler_docs },
     .{ .name = "cp", .help = "cp <src> <dest> - Copy file/folder recursively", .handler = cmd_handler_cp },
+    .{ .name = "fetch", .help = "Show stylish system info summary", .handler = cmd_handler_fetch },
+    .{ .name = "matrix", .help = "Enter the NovumOS Matrix (fun!)", .handler = cmd_handler_matrix },
     .{ .name = "mv", .help = "mv <src> <dest> - Move or rename file/folder", .handler = cmd_handler_mv },
     .{ .name = "ren", .help = "Alias for mv (rename file/folder)", .handler = cmd_handler_rename },
     .{ .name = "format", .help = "Low-level drive formatting tool", .handler = cmd_handler_format },
@@ -542,7 +551,12 @@ fn autocomplete() void {
                 }
             } else {
                 var current = common.current_dir_cluster;
-                const eof_val = if (bpb.fat_type == .FAT12) @as(u32, 0xFF8) else @as(u32, 0xFFF8);
+                const eof_val = switch (bpb.fat_type) {
+                    .FAT12 => @as(u32, 0xFF8),
+                    .FAT16 => @as(u32, 0xFFF8),
+                    .FAT32 => @as(u32, 0x0FFFFFF8),
+                    else => @as(u32, 0xFFF8),
+                };
                 while (current < eof_val) {
                     const lba = bpb.first_data_sector + (current - 2) * bpb.sectors_per_cluster;
                     var s: u32 = 0;
@@ -611,7 +625,7 @@ fn autocomplete() void {
                         }
                     }
                     current = fat.get_fat_entry(drive, bpb, current);
-                    if (current == 0) break;
+                    if (current < 2 or current >= eof_val) break;
                 }
             }
         }
@@ -846,6 +860,27 @@ pub fn shell_execute_literal(cmd: []const u8) void {
     var cmd_raw = common.trim(cmd);
     if (cmd_raw.len == 0) return;
 
+    // Pipe support: cmd1 | cmd2
+    if (common.std_mem_indexOf(u8, cmd_raw, "|")) |idx| {
+        const left = common.trim(cmd_raw[0..idx]);
+        const right = common.trim(cmd_raw[idx + 1 ..]);
+
+        if (left.len > 0 and right.len > 0) {
+            common.pipe_active = true;
+            common.pipe_pos = 0;
+            shell_execute_literal(left);
+            common.pipe_active = false;
+
+            if (common.pipe_pos > 0) {
+                common.pipe_read_active = true;
+                shell_execute_literal(right);
+                common.pipe_read_active = false;
+                common.pipe_pos = 0;
+            }
+            return;
+        }
+    }
+
     // Output redirection support: cmd > file or cmd >> file
     var redirect_file: ?[]const u8 = null;
     var append_mode: bool = false;
@@ -871,7 +906,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
 
     if (redirect_file != null) {
         if (common.selected_disk < 0) {
-            common.printZ("Error: Redirection requires a mounted disk\n");
+            common.printError("Error: Redirection requires a mounted disk\n");
             return;
         }
         common.redirect_active = true;
@@ -933,7 +968,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
                 }
             }
         } else {
-            common.printZ("shell: Direct path execution requires .nv extension\n");
+            common.printError("shell: Direct path execution requires .nv extension\n");
             return;
         }
     }
@@ -970,9 +1005,9 @@ pub fn shell_execute_literal(cmd: []const u8) void {
         }
     }
 
-    common.printZ("shell: command not found: ");
-    common.printZ(cmd_name);
-    common.printZ("\n");
+    common.printError("shell: command not found: ");
+    common.printError(cmd_name);
+    common.printError("\n");
 }
 
 // Handler functions for commands
@@ -1002,7 +1037,9 @@ fn cmd_handler_help(args: []const u8) void {
     while (i < end) : (i += 1) {
         const cmd = SHELL_COMMANDS[i];
         common.printZ("  ");
+        vga.set_color(11, 0); // Light Cyan/Yellow
         common.printZ(cmd.name);
+        vga.reset_color();
         // Padding
         var p = cmd.name.len;
         while (p < 15) : (p += 1) common.print_char(' ');
@@ -1025,7 +1062,7 @@ fn cmd_handler_clear(_: []const u8) void {
 }
 
 fn cmd_handler_about(_: []const u8) void {
-    common.printZ("NewOS v" ++ versioning.NEWOS_VERSION ++ "\n");
+    common.printZ("NovumOS v" ++ versioning.NOVUMOS_VERSION ++ "\n");
     common.printZ("32-bit Protected Mode OS\n");
     common.printZ("x86 + Zig kernel modules\n");
     common.printZ("=== By MinecAnton209 ===\n\n");
@@ -1090,6 +1127,14 @@ fn cmd_handler_mkfs16(args: []const u8) void {
         shell_cmds.cmd_mkfs_fat16(args.ptr, @intCast(args.len));
     } else {
         common.printZ("Usage: mkfs-fat16 <drive>\n");
+    }
+}
+
+fn cmd_handler_mkfs32(args: []const u8) void {
+    if (args.len > 0) {
+        shell_cmds.cmd_mkfs_fat32(args.ptr, @intCast(args.len));
+    } else {
+        common.printZ("Usage: mkfs-fat32 <drive>\n");
     }
 }
 
@@ -1205,8 +1250,36 @@ fn cmd_handler_time(_: []const u8) void {
     shell_cmds.cmd_time();
 }
 
+fn cmd_handler_top(_: []const u8) void {
+    top_cmd.cmd_top();
+}
+
 fn cmd_handler_sysinfo(_: []const u8) void {
     shell_cmds.cmd_sysinfo();
+}
+
+fn cmd_handler_hexdump(args: []const u8) void {
+    if (args.len > 0 or common.pipe_read_active) {
+        shell_cmds.cmd_hexdump(args.ptr, @intCast(args.len));
+    } else {
+        common.printZ("Usage: hexdump <file>\n");
+    }
+}
+
+fn cmd_handler_more(args: []const u8) void {
+    if (args.len > 0 or common.pipe_read_active) {
+        shell_cmds.cmd_more(args.ptr, @intCast(args.len));
+    } else {
+        common.printZ("Usage: more <file>\n");
+    }
+}
+
+fn cmd_handler_fetch(_: []const u8) void {
+    shell_cmds.cmd_fetch();
+}
+
+fn cmd_handler_matrix(_: []const u8) void {
+    shell_cmds.cmd_matrix();
 }
 
 fn cmd_handler_cpuinfo(_: []const u8) void {
@@ -1456,16 +1529,23 @@ fn cmd_handler_tree(_: []const u8) void {
 
 fn display_prompt() void {
     if (vga.zig_get_cursor_col() > 0) common.printZ("\n");
+
+    vga.set_color(10, 0); // Light Green
     if (common.selected_disk >= 0) {
         common.print_char(@intCast(@as(u8, @intCast(common.selected_disk)) + '0'));
         common.print_char(':');
     }
+
+    vga.set_color(11, 0); // Light Yellow/Cyan for path
     if (common.current_path_len == 0) {
         common.printZ("/");
     } else {
         common.printZ(common.current_path[0..common.current_path_len]);
     }
+
+    vga.set_color(15, 0); // White for bracket
     common.printZ("> ");
+    vga.reset_color();
 }
 
 fn display_prompt_serial() void {

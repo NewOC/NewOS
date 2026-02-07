@@ -19,6 +19,8 @@ const HISTORY_SIZE: usize = 10;
 const NOVA_KEYWORDS = [_][]const u8{
     "print", "def", "import", "if", "else", "while", "exit", "reboot", "shutdown",
     "sleep", "shell", "input", "random", "argc", "args", "set", "int", "string",
+    "delete", "rename", "copy", "mkdir", "write_file", "create_file", "read",
+    "abs", "min", "max", "sin", "cos", "tan", "tg", "ctg",
 };
 
 // Interpreter state
@@ -86,16 +88,14 @@ pub fn start(script_path: ?[]const u8) void {
 
     exit_flag = false;
     global_common.seed_random_with_tsc();
-    
+
     if (script_path) |path| {
         runScript(path);
     } else {
         // Welcome message
-        common.printZ(
-            "Nova Language v" ++ versioning.NOVA_VERSION ++ "\n" ++
-            "Commands: print(\"text\"); exit();\n"
-        );
-        
+        common.printZ("Nova Language v" ++ versioning.NOVA_VERSION ++ "\n" ++
+            "Commands: print(\"text\"); exit();\n");
+
         // Main REPL loop (Read-Eval-Print Loop)
         while (!exit_flag and !global_vm.exit_flag) {
             common.printZ("nova> ");
@@ -109,14 +109,14 @@ pub fn start(script_path: ?[]const u8) void {
 pub fn runScript(path: []const u8) void {
     const drive = if (global_common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
     if (global_common.selected_disk < 0) {
-        common.printZ("Error: No disk mounted. Please use 'mount 0' first.\n");
+        global_common.printError("Error: No disk mounted. Please use 'mount 0' first.\n");
         return;
     }
 
     if (fat.read_bpb(drive)) |bpb| {
         if (fat.find_entry(drive, bpb, global_common.current_dir_cluster, path)) |entry| {
             if ((entry.attr & 0x10) != 0) {
-                common.printZ("Error: Path is a directory\n");
+                global_common.printError("Error: Path is a directory\n");
                 return;
             }
 
@@ -124,16 +124,16 @@ pub fn runScript(path: []const u8) void {
             const script_ptr = global_common.heap.alloc(size) orelse return;
             const script_slice = @as([*]u8, @ptrCast(script_ptr))[0..size];
             const bytes_read = fat.read_file(drive, bpb, global_common.current_dir_cluster, path, script_slice);
-            
+
             if (bytes_read > 0) {
                 runScriptSource(script_slice);
             } else {
-                common.printZ("Error: Empty file or read error\n");
+                global_common.printError("Error: Empty file or read error\n");
             }
         } else {
-            common.printZ("Error: Script not found: ");
-            common.printZ(path);
-            common.printZ("\n");
+            global_common.printError("Error: Script not found: ");
+            global_common.printError(path);
+            global_common.printError("\n");
         }
     }
 }
@@ -143,21 +143,21 @@ pub fn runScriptSource(script: []const u8) void {
         global_vm = vm.VM.init();
         vm_initialized = true;
     }
-    
+
     var script_lexer = lexer.Lexer.init(script);
     var tokens_list = script_lexer.tokenize() catch {
-        common.printZ("Lexer Error\n");
+        global_common.printError("Lexer Error\n");
         return;
     };
-    
+
     const tokens = tokens_list.items[0..tokens_list.len];
     _ = global_vm.allocated_tokens.append(tokens) catch {};
     _ = global_vm.allocated_sources.append(script) catch {};
 
     global_vm.run(tokens) catch |err| {
-        common.printZ("VM Error: ");
+        global_common.printError("VM Error: ");
         _ = err;
-        common.printZ("\n");
+        global_common.printError("\n");
     };
 }
 
@@ -167,11 +167,11 @@ fn readLine() void {
     buf_pos = 0;
     for (&buffer) |*b| b.* = 0;
     history_index = history_count;
-    
+
     prompt_row = vga.zig_get_cursor_row();
     prompt_col = vga.zig_get_cursor_col();
     refreshLine(); // Initial draw of status bar
-    
+
     while (true) {
         const key = keyboard.keyboard_wait_char();
 
@@ -181,7 +181,7 @@ fn readLine() void {
             buf_pos = 0;
             return;
         }
-        
+
         if (key != 9) auto_cycling = false;
 
         if (key == 10 or key == 13) { // Enter
@@ -272,6 +272,8 @@ fn readLine() void {
                 }
                 refreshLine();
             }
+        } else if (key == 27) { // ESC
+            // Clear line?
         }
     }
 }
@@ -287,8 +289,8 @@ fn loadHistory() void {
 fn saveToHistory() void {
     if (history_count == HISTORY_SIZE) {
         for (0..HISTORY_SIZE - 1) |i| {
-            history[i] = history[i+1];
-            history_lens[i] = history_lens[i+1];
+            history[i] = history[i + 1];
+            history_lens[i] = history_lens[i + 1];
         }
         history_count -= 1;
     }
@@ -334,7 +336,7 @@ fn autocomplete() void {
 
     const match_to_pick = auto_match_index % total_matches;
     var current_match_idx: usize = 0;
-    
+
     for (NOVA_KEYWORDS) |kw| {
         if (global_common.startsWithIgnoreCase(kw, current_prefix)) {
             if (current_match_idx == match_to_pick) {
@@ -355,7 +357,7 @@ fn autocomplete() void {
 
 fn refreshLine() void {
     const saved_pos = buf_pos;
-    
+
     // VGA Update
     vga.zig_set_cursor(prompt_row, prompt_col);
     {
@@ -367,16 +369,19 @@ fn refreshLine() void {
             const idx = @as(usize, row) * 80 + col;
             vga.VIDEO_MEMORY[idx] = vga.DEFAULT_ATTR | ' ';
             col += 1;
-            if (col >= 80) { col = 0; row += 1; }
+            if (col >= 80) {
+                col = 0;
+                row += 1;
+            }
         }
     }
-    
+
     vga.zig_set_cursor(prompt_row, prompt_col);
     const row_before = vga.zig_get_cursor_row();
     for (buffer[0..buf_len]) |c| vga.zig_print_char(c);
     const row_after = vga.zig_get_cursor_row();
     if (row_after < row_before and prompt_row > 0) prompt_row -= 1;
-    
+
     // Serial Update
     serial.serial_hide_cursor();
     serial.serial_set_cursor(prompt_row, prompt_col);
@@ -392,10 +397,10 @@ fn refreshLine() void {
     vga.VIDEO_MEMORY[80 - 13] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'A';
     vga.VIDEO_MEMORY[80 - 12] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'P';
     vga.VIDEO_MEMORY[80 - 11] = (if (keyboard.keyboard_get_caps_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'S';
-    
-    vga.VIDEO_MEMORY[80 - 9]  = (if (keyboard.keyboard_get_num_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'N';
-    vga.VIDEO_MEMORY[80 - 8]  = (if (keyboard.keyboard_get_num_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'U';
-    vga.VIDEO_MEMORY[80 - 7]  = (if (keyboard.keyboard_get_num_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'M';
+
+    vga.VIDEO_MEMORY[80 - 9] = (if (keyboard.keyboard_get_num_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'N';
+    vga.VIDEO_MEMORY[80 - 8] = (if (keyboard.keyboard_get_num_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'U';
+    vga.VIDEO_MEMORY[80 - 7] = (if (keyboard.keyboard_get_num_lock()) @as(u16, 0x0F00) else @as(u16, 0x0800)) | 'M';
 
     const attr = @as(u16, 0x0E00);
     const status = if (insert_mode) " INS " else " OVR ";
@@ -405,7 +410,10 @@ fn refreshLine() void {
 fn moveScreenCursor() void {
     var new_col = @as(u16, prompt_col) + buf_pos;
     var new_row = prompt_row;
-    while (new_col >= 80) { new_col -= 80; new_row += 1; }
+    while (new_col >= 80) {
+        new_col -= 80;
+        new_row += 1;
+    }
     vga.zig_set_cursor(@intCast(new_row), @intCast(new_col));
 }
 
