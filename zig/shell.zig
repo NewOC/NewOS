@@ -11,7 +11,7 @@ const fat = @import("drivers/fat.zig");
 const ata = @import("drivers/ata.zig");
 const config = @import("config.zig");
 const nova_interpreter = @import("nova/interpreter.zig");
-const nova_commands = @import("nova/commands.zig");
+const nova_vm = @import("vm.zig");
 
 // Embedded Nova Scripts
 const EmbeddedScript = struct {
@@ -925,7 +925,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
                 if (fat.read_bpb(drive)) |bpb| {
                     if (fat.resolve_full_path(drive, bpb, common.current_dir_cluster, common.current_path[0..common.current_path_len], cmd_name)) |res| {
                         if (!res.is_dir) {
-                            nova_commands.setScriptArgs(argv[1..argc]);
+                            nova_vm.setScriptArgs(argv[1..argc]);
                             nova_interpreter.runScript(res.path[0..res.path_len]);
                             return;
                         }
@@ -941,7 +941,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
     // 3. Built-in Nova Scripts
     for (BUILTIN_SCRIPTS) |script| {
         if (common.std_mem_eql(script.name, cmd_name)) {
-            nova_commands.setScriptArgs(argv[1..argc]);
+            nova_vm.setScriptArgs(argv[1..argc]);
             nova_interpreter.runScriptSource(script.source);
             return;
         }
@@ -962,7 +962,7 @@ pub fn shell_execute_literal(cmd: []const u8) void {
             const drive = if (common.selected_disk == 0) ata.Drive.Master else ata.Drive.Slave;
             if (fat.read_bpb(drive)) |bpb| {
                 if (fat.find_entry(drive, bpb, 0, full_path)) |_| {
-                    nova_commands.setScriptArgs(argv[1..argc]);
+                    nova_vm.setScriptArgs(argv[1..argc]);
                     nova_interpreter.runScript(full_path);
                     return;
                 }

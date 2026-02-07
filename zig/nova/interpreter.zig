@@ -2,8 +2,9 @@
 // This module handles input buffering and execution of Nova commands.
 
 const common = @import("common.zig");
-const parser = @import("parser.zig");
-const commands = @import("commands.zig");
+const lexer = @import("lexer.zig");
+const vm = @import("../vm.zig");
+const util = @import("util.zig");
 const keyboard = @import("../keyboard_isr.zig");
 const versioning = @import("../versioning.zig");
 const vga = @import("../drivers/vga.zig");
@@ -11,16 +12,13 @@ const serial = @import("../drivers/serial.zig");
 const global_common = @import("../commands/common.zig");
 const fat = @import("../drivers/fat.zig");
 const ata = @import("../drivers/ata.zig");
-const shell = @import("../shell.zig");
 
 const BUFFER_SIZE: usize = 128;
 const HISTORY_SIZE: usize = 10;
 
 const NOVA_KEYWORDS = [_][]const u8{
-    "print(", "set string ", "set int ", "exit()", "reboot()", "shutdown()",
-    "input(", "delete(", "rename(", "copy(", "mkdir(", "write_file(", "create_file(",
-    "if ", "else", "while ", "sleep(", "shell(", "read(", "random(",
-    "min(", "max(", "abs(", "sin(", "cos(", "tan(", "atan(",
+    "print", "def", "import", "if", "else", "while", "exit", "reboot", "shutdown",
+    "sleep", "shell", "input", "random", "argc", "args", "set", "int", "string",
 };
 
 // Interpreter state
@@ -31,6 +29,10 @@ var insert_mode: bool = true;
 var prompt_row: u8 = 0;
 var prompt_col: u8 = 0;
 var exit_flag: bool = false;
+
+// VM state
+var global_vm: vm.VM = undefined;
+var vm_initialized: bool = false;
 
 // History state
 var history: [HISTORY_SIZE][BUFFER_SIZE]u8 = [_][BUFFER_SIZE]u8{[_]u8{0} ** BUFFER_SIZE} ** HISTORY_SIZE;
@@ -77,6 +79,11 @@ pub fn readInput(buf: []u8) usize {
 
 /// Start the Nova interpreter environment
 pub fn start(script_path: ?[]const u8) void {
+    if (!vm_initialized) {
+        global_vm = vm.VM.init();
+        vm_initialized = true;
+    }
+
     exit_flag = false;
     global_common.seed_random_with_tsc();
     
@@ -90,7 +97,7 @@ pub fn start(script_path: ?[]const u8) void {
         );
         
         // Main REPL loop (Read-Eval-Print Loop)
-        while (!exit_flag) {
+        while (!exit_flag and !global_vm.exit_flag) {
             common.printZ("nova> ");
             readLine();
             if (exit_flag) break;
@@ -113,14 +120,13 @@ pub fn runScript(path: []const u8) void {
                 return;
             }
 
-            // Allocate a temporary buffer for the script
-            // For now, use a fixed size. We can improve this later.
-            var script_buffer: [4096]u8 = [_]u8{0} ** 4096;
-            const bytes_read = fat.read_file(drive, bpb, global_common.current_dir_cluster, path, &script_buffer);
+            const size = entry.file_size;
+            const script_ptr = global_common.heap.alloc(size) orelse return;
+            const script_slice = @as([*]u8, @ptrCast(script_ptr))[0..size];
+            const bytes_read = fat.read_file(drive, bpb, global_common.current_dir_cluster, path, script_slice);
             
             if (bytes_read > 0) {
-                const script = script_buffer[0..@intCast(bytes_read)];
-                runScriptSource(script);
+                runScriptSource(script_slice);
             } else {
                 common.printZ("Error: Empty file or read error\n");
             }
@@ -133,190 +139,27 @@ pub fn runScript(path: []const u8) void {
 }
 
 pub fn runScriptSource(script: []const u8) void {
-     // VALIDATE SYNTAX BEFORE EXECUTION
-    if (!validateScript(script)) {
-        common.printZ("Script validation failed. Execution aborted.\n");
+    if (!vm_initialized) {
+        global_vm = vm.VM.init();
+        vm_initialized = true;
+    }
+    
+    var script_lexer = lexer.Lexer.init(script);
+    var tokens_list = script_lexer.tokenize() catch {
+        common.printZ("Lexer Error\n");
         return;
-    }
+    };
     
-    // Reset state before run
-    exit_flag = false;
-    executeScript(script);
+    const tokens = tokens_list.items[0..tokens_list.len];
+    _ = global_vm.allocated_tokens.append(tokens) catch {};
+    _ = global_vm.allocated_sources.append(script) catch {};
+
+    global_vm.run(tokens) catch |err| {
+        common.printZ("VM Error: ");
+        _ = err;
+        common.printZ("\n");
+    };
 }
-
-fn validateScript(script: []const u8) bool {
-    var brace_depth: i32 = 0;
-    var paren_depth: i32 = 0;
-    var in_quotes: bool = false;
-    var line_num: u32 = 1;
-    var has_errors: bool = false;
-    
-    var i: usize = 0;
-    while (i < script.len) : (i += 1) {
-        const c = script[i];
-        
-        if (c == '\n') {
-            line_num += 1;
-            if (in_quotes) {
-                common.printZ("Error: Unclosed quote on line ");
-                common.printNum(@intCast(line_num - 1));
-                common.printZ("\n");
-                has_errors = true;
-                in_quotes = false;
-            }
-            continue;
-        }
-        
-        if (c == '"') {
-            in_quotes = !in_quotes;
-            continue;
-        }
-        
-        if (in_quotes) continue;
-        
-        if (c == '{') brace_depth += 1;
-        if (c == '}') {
-            brace_depth -= 1;
-            if (brace_depth < 0) {
-                common.printZ("Error: Unmatched '}' on line ");
-                common.printNum(@intCast(line_num));
-                common.printZ("\n");
-                has_errors = true;
-                brace_depth = 0;
-            }
-        }
-        
-        if (c == '(') paren_depth += 1;
-        if (c == ')') {
-            paren_depth -= 1;
-            if (paren_depth < 0) {
-                common.printZ("Error: Unmatched ')' on line ");
-                common.printNum(@intCast(line_num));
-                common.printZ("\n");
-                has_errors = true;
-                paren_depth = 0;
-            }
-        }
-    }
-    
-    if (brace_depth != 0) {
-        common.printZ("Error: Unclosed '{' - missing ");
-        common.printNum(@intCast(brace_depth));
-        common.printZ(" closing brace(s)\n");
-        has_errors = true;
-    }
-    
-    if (paren_depth != 0) {
-        common.printZ("Error: Unclosed '(' - missing ");
-        common.printNum(@intCast(paren_depth));
-        common.printZ(" closing parenthesis\n");
-        has_errors = true;
-    }
-    
-    if (in_quotes) {
-        common.printZ("Error: Unclosed quote at end of file\n");
-        has_errors = true;
-    }
-    
-    return !has_errors;
-}
-
-fn executeScript(script: []const u8) void {
-    var pos: usize = 0;
-    while (!exit_flag) {
-        if (keyboard.check_ctrl_c()) {
-            common.printZ("\nScript interrupted by user\n");
-            exit_flag = true;
-            return;
-        }
-        // Skip whitespace and empty lines
-        while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r')) : (pos += 1) {}
-        if (pos >= script.len) break;
-
-        const stmt = parser.parseStatement(script, pos);
-        
-        if (stmt.cmd_type == .empty) {
-            pos = parser.nextStatement(script, pos);
-            continue;
-        }
-
-        if (stmt.cmd_type == .if_stmt) {
-            const cond = commands.evaluateCondition(script, stmt);
-            
-            // Find opening brace {
-            var brace_pos = stmt.arg_start + stmt.arg_len;
-            while (brace_pos < script.len and script[brace_pos] != '{') : (brace_pos += 1) {}
-            
-            if (brace_pos >= script.len) {
-                common.printZ("Error: Missing { for if\n");
-                break;
-            }
-
-            const end_brace = findMatchingBrace(script, brace_pos + 1);
-            
-            if (cond) {
-                executeScript(script[brace_pos + 1 .. end_brace]);
-                pos = end_brace + 1;
-                // SKIP any following else block
-                while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r' or script[pos] == ';')) : (pos += 1) {}
-                if (pos + 4 <= script.len and common.startsWith(script[pos..], "else")) {
-                    pos += 4;
-                    while (pos < script.len and (script[pos] == ' ' or script[pos] == '\n' or script[pos] == '\r')) : (pos += 1) {}
-                    if (pos < script.len and script[pos] == '{') {
-                        pos = findMatchingBrace(script, pos + 1) + 1;
-                    }
-                }
-            } else {
-                // Check if an else block follows
-                var next_pos = end_brace + 1;
-                while (next_pos < script.len and (script[next_pos] == ' ' or script[next_pos] == '\n' or script[next_pos] == '\r' or script[next_pos] == ';')) : (next_pos += 1) {}
-                if (next_pos + 4 <= script.len and common.startsWith(script[next_pos..], "else")) {
-                    var else_brace_pos = next_pos + 4;
-                    while (else_brace_pos < script.len and script[else_brace_pos] != '{') : (else_brace_pos += 1) {}
-                    if (else_brace_pos < script.len) {
-                        const else_end_brace = findMatchingBrace(script, else_brace_pos + 1);
-                        executeScript(script[else_brace_pos + 1 .. else_end_brace]);
-                        pos = else_end_brace + 1;
-                    } else {
-                       pos = next_pos + 4;
-                    }
-                } else {
-                    pos = end_brace + 1;
-                }
-            }
-        } else if (stmt.cmd_type == .while_stmt) {
-            var brace_pos = stmt.arg_start + stmt.arg_len;
-            while (brace_pos < script.len and script[brace_pos] != '{') : (brace_pos += 1) {}
-            if (brace_pos >= script.len) { break; }
-            
-            const end_brace = findMatchingBrace(script, brace_pos + 1);
-            const block_content = script[brace_pos + 1 .. end_brace];
-            
-            while (commands.evaluateCondition(script, stmt) and !exit_flag) {
-                executeScript(block_content);
-            }
-            pos = end_brace + 1;
-        } else {
-            // Normal command
-            commands.execute(script, stmt, &exit_flag);
-            pos = parser.nextStatement(script, pos);
-        }
-    }
-}
-
-fn findMatchingBrace(script: []const u8, start_idx: usize) usize {
-    var depth: i32 = 1;
-    var i = start_idx;
-    while (i < script.len) : (i += 1) {
-        if (script[i] == '{') depth += 1;
-        if (script[i] == '}') {
-            depth -= 1;
-            if (depth == 0) return i;
-        }
-    }
-    return i;
-}
-
 
 /// Read a single line of input from the keyboard
 fn readLine() void {
@@ -429,8 +272,6 @@ fn readLine() void {
                 }
                 refreshLine();
             }
-        } else if (key == 27) { // ESC
-             // Clear line?
         }
     }
 }
@@ -571,5 +412,5 @@ fn moveScreenCursor() void {
 /// Parse and execute the buffered command line
 fn executeLine() void {
     if (buf_len == 0) return;
-    executeScript(buffer[0..buf_len]);
+    runScriptSource(buffer[0..buf_len]);
 }

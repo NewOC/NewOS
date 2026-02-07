@@ -30,6 +30,15 @@ pub fn startsWith(str: []const u8, prefix: []const u8) bool {
     return true;
 }
 
+pub fn endsWith(str: []const u8, suffix: []const u8) bool {
+    if (str.len < suffix.len) return false;
+    const start = str.len - suffix.len;
+    for (0..suffix.len) |i| {
+        if (str[start + i] != suffix[i]) return false;
+    }
+    return true;
+}
+
 pub fn indexOf(str: []const u8, char: u8) ?usize {
     for (str, 0..) |c, i| {
         if (c == char) return i;
